@@ -7,10 +7,10 @@ st.set_page_config(page_title="行业择时系统", layout="wide")
 # 注意：路径要相对于 app.py 的位置
 pages = {
     "系统功能": [
-        st.Page("Home.py", title="主页"),
-        st.Page("pages/Dataset.py", title="数据管理"),
-        st.Page("pages/Features.py", title="特征工程"),
-        st.Page("pages/Backtest.py", title="策略回测"),
+        st.Page("Home.py", title="主页", icon="🏠"),
+        st.Page("pages/Dataset.py", title="数据管理", icon="📊"),
+        st.Page("pages/Features.py", title="特征工程", icon="⚙️"),
+        st.Page("pages/Backtest.py", title="策略回测", icon="📈"),
     ]
 }
 
