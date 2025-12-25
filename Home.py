@@ -32,6 +32,7 @@ st.markdown("""
         - 交运 https://docs.google.com/spreadsheets/d/1VVTAG1ixDe50ysjMZEAAZyvYkUbiHBvolh0oaYn8Mxw/edit?usp=drive_link 在这更新！
     - 数据日期是取特征、标的、基准的交集
     - 选取卡尔曼滤波之后，后续计算均基于滤波后的数据
+    - 特征参数某些值拖不到的话可以用键盘左右键
 """)
 
 st.divider()
