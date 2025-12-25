@@ -37,5 +37,5 @@ st.markdown("""
 st.divider()
 
 st.markdown("""
-    源码：
+    源码：https://github.com/030215czcjw-pixel/Industry_Quant_System
 """)
