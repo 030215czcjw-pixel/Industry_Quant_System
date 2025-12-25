@@ -129,9 +129,9 @@ middle_right_cell = cols_middle[1].container(border=True) # 参数区
 with middle_right_cell:
     st.caption("特征参数")
     use_kalman = st.checkbox("卡尔曼滤波", value=True)
-    n_lag = st.slider("滞后期数", 0, 365, 0)
-    n_MA = st.slider("移动平均窗口", 0, 365, 0)
-    n_D = st.slider("差分期数", 0, 365, 0)
+    n_lag = st.slider("滞后期数", 0, 365, 1)
+    n_MA = st.slider("移动平均窗口", 0, 365, 1)
+    n_D = st.slider("差分期数", 0, 365, 1)
     n_yoy = st.selectbox("同比期数(1即为环比)", [0, 1, 12, 52, 252])
     
     st.divider()
