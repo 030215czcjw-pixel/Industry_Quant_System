@@ -143,7 +143,12 @@ with top_left_cell:
     st.caption(f"基准: {st.session_state.base_chosen}" if 'base_chosen' in st.session_state else "请先在 DATA 页面选择基准。")
     st.caption(f"因子: {st.session_state.feature_selected}" if 'feature_selected' in st.session_state else "请先在 FEATURES 页面生成特征。")
     st.caption(f"可用特征列: {', '.join(columns)}")
-    s_input = st.text_area("策略逻辑 (Python格式)", value="df[''] < 0")
+    if st.session_state.get('strategy_expression') is not None:
+        s_input_default = st.session_state.strategy_expression
+    else:
+        s_input_default = "df[''] < 0"
+    s_input = st.text_area("策略逻辑 (Python格式)", value=s_input_default)
+    st.session_state.strategy_expression = s_input
     st.caption(f"示例: ")
     st.caption(f"df['移动平均5'] < 50 表示 50天移动平均 小于 50 时触发信号。")
     st.caption(f"(df['移动平均5'] < 50) & (df['环比'] > 50) 表示同时满足两个条件时触发信号。")
