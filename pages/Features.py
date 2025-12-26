@@ -27,7 +27,7 @@ def apply_kalman(series, Q_val=0.01, R_val=0.1):
         
     return filtered_results
 
-def generate_features(data, n_lag, n_MA, n_D, n_yoy, use_kalman):
+def generate_features(data, n_lag, n_MA, n_D, n_yoy1, use_kalman):
     df = pd.DataFrame(index=data.index)
     # 强制转换为 float64
     df['原始数据'] = data.iloc[:, 0].astype('float64')
@@ -49,11 +49,12 @@ def generate_features(data, n_lag, n_MA, n_D, n_yoy, use_kalman):
     if n_D > 0:
         df[f'差分{n_D}'] = data_source.shift(n_lag).diff(n_D)
     
-    if n_yoy > 1:
-        df[f'同比{n_yoy}'] = data_source.shift(n_lag).pct_change(n_yoy) 
+    for yoy in n_yoy:
+        if yoy > 1:
+            df[f'同比{yoy}'] = data_source.shift(n_lag).pct_change(yoy) 
     
-    if n_yoy == 1:
-        df[f'环比'] = data_source.shift(n_lag).pct_change(1)
+        if yoy == 1:
+            df[f'环比'] = data_source.shift(n_lag).pct_change(1)
             
     return df
 
@@ -148,9 +149,7 @@ with top_right2_cell:
 
     # --- 右侧列 ---
     with col_param_2:
-        # 为了让右侧第一行和左侧对齐，可以加个空的 write 或者直接放控件
-        # 这里直接放 Selectbox，视觉上它比较高，能大致对齐
-        n_yoy = st.select_slider("同比期数(1即为环比)", [0, 1, 12, 52, 252])
+        n_yoy = st.pills("同比期数1(1即为环比)", [1, 12, 52, 252], selection_mode="multi")
         n_D = st.slider("差分期数", 0, 365, 0)
     
         # --- 按钮区域 (保持通栏) ---
