@@ -8,7 +8,7 @@ st.set_page_config(
             layout="wide",                 # 布局模式 ("centered" 或 "wide")
         )
 
-stocks = ["中国神华", "综合交易价_CCTD秦皇岛动力煤(Q5500)", "招商轮船"]
+stocks = ["中国神华", "综合交易价_CCTD秦皇岛动力煤(Q5500)", "招商轮船", "南方航空"]
 bases = ["沪深300"]
 
 cols = st.columns([1, 1])
