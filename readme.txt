@@ -1,6 +1,7 @@
 app.py 设置菜单栏
 Home.py 主页
 pages 里面的是每一页的代码
+data 中存放股票和沪深300的数据，但后续尝试更新在线表中
 
 每一页中间传递的变量存在st.session_state中
 st.session_state.stock_chosen ：选择股票的名称
