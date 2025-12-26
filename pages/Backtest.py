@@ -4,7 +4,7 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-class BayesianStrategyBacktester:
+class BayesianStrategyBacktester:           #贝叶斯策略回测器
     def __init__(self, stock_data, baseline_data, feature_data, profit_setted, observation_periods, holding_period):
         """
         初始化回测器，执行数据对齐和基础收益率计算。
@@ -60,7 +60,7 @@ class BayesianStrategyBacktester:
 
         # 2. 计算先验概率 P(W) - 使用滚动窗口
         # shift(holding_period) 是为了防止未来函数，确保只用过去的数据计算当前的先验
-        df['P(W)'] = df['胜率触发'].rolling(window=self.observation_periods).mean().shift(self.holding_period)
+        df['P(W)'] = df['胜率触发'].rolling(window=self.observation_periods).mean().shift(self.holding_period + 1)
     
 
         # 3. 执行策略表达式，计算信号 C
@@ -77,12 +77,11 @@ class BayesianStrategyBacktester:
         df['notW_and_C'] = ((df['胜率触发'] == 0) & (df['信号触发'] == 1)).astype(int)
         
         # 贝叶斯似然率计算
-        rolling_w_c = df['W_and_C'].rolling(self.observation_periods).sum().shift(self.holding_period)
-        rolling_w = df['胜率触发'].rolling(self.observation_periods).sum().shift(self.holding_period)
+        rolling_w_c = df['W_and_C'].rolling(self.observation_periods).sum().shift(self.holding_period + 1)
+        rolling_w = df['胜率触发'].rolling(self.observation_periods).sum().shift(self.holding_period + 1)
         
-        rolling_notw_c = df['notW_and_C'].rolling(self.observation_periods).sum().shift(self.holding_period)
-        rolling_notw = df['胜率不触发'].rolling(self.observation_periods).sum().shift(self.holding_period)
-
+        rolling_notw_c = df['notW_and_C'].rolling(self.observation_periods).sum().shift(self.holding_period + 1)
+        rolling_notw = df['胜率不触发'].rolling(self.observation_periods).sum().shift(self.holding_period + 1)
         # 避免除以零
         p_c_w = rolling_w_c / rolling_w.replace(0, np.nan)
         p_c_notw = rolling_notw_c / rolling_notw.replace(0, np.nan)
@@ -106,7 +105,7 @@ class BayesianStrategyBacktester:
         # 仓位逻辑：如果买入，持有 holding_period 天 (这里简化为均摊)
         df['仓位'] = np.where(
             df['买入信号'] == 1, 
-            df['信号触发'].shift(1).rolling(self.holding_period).sum() / self.holding_period, 
+            df['信号触发'].rolling(self.holding_period).sum() / self.holding_period, 
             0
         )
         
@@ -116,19 +115,19 @@ class BayesianStrategyBacktester:
         st.success("回测完成！")
         return df
 
-st.set_page_config(
+st.set_page_config(                         #设置网页的标题和图标
             page_title="策略回测", 
-            layout="wide",                 # 布局模式 ("centered" 或 "wide")
+            layout="wide",                
         )
 
-if not ('features' in st.session_state):
+if not ('features' in st.session_state):                #检查必要的session_state变量
     st.warning("请先在 FEATURES 页面生成特征。")
     st.stop()
 if not ('stock_chosen' in st.session_state) or not ('base_chosen' in st.session_state):
     st.warning("请先在 DATA 页面选择标的和基准。")
     st.stop()
 
-cols = st.columns([4, 1])
+cols = st.columns([4, 1])                               #布局：两列，左侧宽度为4，右侧宽度为1
 top_left_cell = cols[0].container(
     border=True, height="stretch", vertical_alignment="center"
 )
@@ -175,11 +174,9 @@ with top_right_cell:
                     feature_cols=st.session_state.features.columns.tolist(),
                     strategy_expression=s_input
                 )
-           
-        
 
 
-if 'df_res' in locals():
+if 'df_res' in locals():                                
     # --- 结果展示 ---
     final_nav = df_res['仓位净值'].iloc[-1]
     prior_nav = df_res['先验仓位净值'].iloc[-1]

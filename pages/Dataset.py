@@ -20,9 +20,14 @@ top_right_cell = cols[1].container(
 )
 
 with top_left_cell:
+    if st.session_state.get('stock_chosen') is not None:
+        default_stock = st.session_state['stock_chosen']
+    else:
+        default_stock = None
     stock_chosen = st.pills(
         "选择标的",
         options=stocks,
+        default=default_stock,
         selection_mode="single"
     )
     st.session_state.stock_chosen = stock_chosen
@@ -57,53 +62,119 @@ bottom_cell = cols[0].container(
     border=True, height="stretch", vertical_alignment="center"
 )
 
-with bottom_cell:
-    # 1. 开启双Y轴模式
-    fig = make_subplots(
-        rows=1, cols=1, 
-        specs=[[{"secondary_y": True}]] 
-    )
+# 计算超额收益
+st.session_state.stock_data['收益率'] = st.session_state.stock_data['收盘'].pct_change()
+st.session_state.base_data['收益率'] = st.session_state.base_data['close'].pct_change()
+st.session_state.stock_data['超额收益率'] = st.session_state.stock_data['收益率'] - st.session_state.base_data['收益率']
+st.session_state.stock_data['累计超额收益'] = (1 + st.session_state.stock_data['超额收益率']).cumprod()
 
-    # 2. 第一条线：个股 (使用左轴 secondary_y=False)
+with bottom_cell:
+    st.caption("走势对比", text_alignment="center")
+    # 初始化双轴图 (左轴+右轴)
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    # trace1: 个股 (左轴 y1)
     fig.add_trace(
         go.Scatter(
             x=st.session_state.stock_data.index,
             y=st.session_state.stock_data['收盘'],
-            mode='lines',
-            line=dict(color='red'),
-            name=f"{stock_chosen} (左轴)"
+            name=f"{stock_chosen} (左轴)",
+            line=dict(color='red', width=1.5),
+            opacity=0.8
         ),
-        secondary_y=False,
+        secondary_y=False
     )
 
-    # 3. 第二条线：基准 (使用右轴 secondary_y=True)
+    # trace2: 基准 (右轴 y2)
     fig.add_trace(
         go.Scatter(
             x=st.session_state.base_data.index,
             y=st.session_state.base_data['close'],
-            mode='lines',
-            line=dict(color='grey'),
-            name=f"{base_chosen} (右轴)"
+            name=f"{base_chosen} (右轴1)",
+            line=dict(color='grey', width=1.5),
+            opacity=0.5 
         ),
-        secondary_y=True,
+        secondary_y=True
     )
 
-    # 4. 调整布局
+    # trace3: 累计超额 (右轴2 - 新增的第三轴)
+    # 注意：这里不使用 secondary_y 参数，而是直接指定 yaxis='y3'
+    fig.add_trace(
+        go.Scatter(
+            x=st.session_state.stock_data.index,
+            y=st.session_state.stock_data['累计超额收益'],
+            name="累计超额收益 (右轴2)",
+            line=dict(color='#ff7f0e', width=1.5),
+            opacity=0.5, 
+            fill='tozeroy',                      # 填充颜色，更醒目
+            fillcolor='rgba(255, 127, 14, 0.1)', # 半透明橙色
+            yaxis="y3"                           # 关键：指定挂载到 y3 轴
+        )
+    )
+
+    # --- 3. 布局调整 (核心难点) ---
     fig.update_layout(
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02, # 放在顶部，防止遮挡
-            xanchor="left",
-            x=0
+        xaxis=dict(domain=[0, 0.9]), # 压缩X轴绘图区域，给右侧留出空间放第三个轴
+        
+        # 左轴配置
+        yaxis=dict(
+            title=dict(text=stock_chosen, font=dict(color="red"))
         ),
-        # 设置左右轴的标题（可选）
-        yaxis=dict(title=stock_chosen),
-        yaxis2=dict(title=base_chosen, showgrid=False) # showgrid=False 防止网格线打架
+        
+        # 右轴1配置 (基准)
+        yaxis2=dict(
+            title=dict(text=base_chosen, font=dict(color="grey")),
+            showgrid=False # 关掉网格防乱
+        ),
+        
+        # 右轴2配置 (超额收益 - 第三轴)
+        yaxis3=dict(
+            title=dict(text="累计超额收益", font=dict(color="#ff7f0e")),
+            anchor="free",     # 轴的位置自由移动
+            overlaying="y",    # 覆盖在主图上
+            side="right",      # 放在右边
+            position=1.0,      # 1.0 是紧贴右侧图表边缘，此轴会和 y2 重叠，下面调整位置
+            showgrid=False
+        ),
+        
+        legend=dict(x=0, y=1.1, orientation='h'), # 图例放顶上
+        hovermode="x unified" # 统一悬停显示
     )
+
+    # 调整 y2 和 y3 的位置，避免重叠
+    # 实际上 Plotly 的 secondary_y 默认在右侧。我们需要把 y3 推得更远一点。
+    fig.update_layout(
+        yaxis2=dict(position=0.9),  # 把基准轴稍微往左挪一点（配合 domain=[0, 0.9]）
+        yaxis3=dict(position=1.0)   # 把超额轴放在最右边
+    )
+    
+    # 更好的方案：保持 domain=[0, 0.85]，y2 在 0.85, y3 在 0.92
+    fig.update_layout(xaxis=dict(domain=[0, 0.88])) # 图表画板占 88% 宽度
+    fig.update_layout(yaxis2=dict(position=0.88))   # 第一右轴贴着画板
+    fig.update_layout(yaxis3=dict(position=0.96))   # 第二右轴再往右偏离一点
+
+    # --- 4. 添加下方拖动时间轴 & 快捷按钮 ---
     fig.update_xaxes(
-        rangeslider_visible=True,  # 显示底部滑动条
-        row=1, col=1               # 指定应用到哪个子图
+        # 1. 开启下方拖动条
+        rangeslider_visible=True,
+        rangeslider=dict(
+            visible=True,
+            thickness=0.1,  # 设置拖动条的高度（占比 10%）
+            bgcolor='rgba(230,230,230,0.5)' # 拖动条背景色
+        ),
+        
+        # 2. 时间范围选择按钮
+        rangeselector=dict(
+            buttons=list([
+                dict(count=6, label="6月", step="month", stepmode="backward"),
+                dict(count=1, label="1年", step="year", stepmode="backward"),
+                dict(count=5, label="5年", step="year", stepmode="backward"),
+                dict(step="all", label="全部")
+            ]),
+            x=0.73,     # 按钮位置 X
+            y=1.1,  # 按钮位置 Y (放在图表上方)
+            bgcolor='rgba(255,255,255,0.8)' # 按钮背景
+        )
     )
+
     st.plotly_chart(fig, width='stretch')
