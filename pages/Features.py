@@ -226,7 +226,6 @@ if not st.session_state.features.empty:
                     name="累计超额收益 (右轴2)",
                     mode='lines',
                     line=dict(color='#ff7f0e', width=2), # 橙色
-                    fill='tozeroy',                      # 填充背景
                     fillcolor='rgba(255, 127, 14, 0.1)', # 极淡橙色
                     yaxis="y3"                           # 【关键】挂载到第三轴
                 )
