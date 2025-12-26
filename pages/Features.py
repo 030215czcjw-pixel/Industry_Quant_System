@@ -102,7 +102,7 @@ with top_left_cell:
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
         return pd.ExcelFile(url)
 
-    if st.button("同步云端表", use_container_width=True):
+    if st.button("同步云端表", width='stretch'):
         with st.spinner("正在下载并解析数据..."):
             try:
                 st.session_state['xl_object'] = fetch_xl_object(SHEET_ID)
@@ -118,12 +118,20 @@ with top_right1_cell:
         st.warning("请先在左侧点击“同步云端表”以加载数据。")
         st.stop() # 停止运行下面的代码，防止报错
     
-    feature_selected = st.pills("选择特征", xl.sheet_names, selection_mode="single")
-    st.session_state.feature_selected = feature_selected
+    if st.session_state.get('feature_selected') is not None:
+        default_feature = st.session_state['feature_selected']
+    else:
+        default_feature = None
+    
+    try:
+        feature_selected = st.pills("选择特征", xl.sheet_names, selection_mode="single", default=default_feature)
+        st.session_state.feature_selected = feature_selected
+    except:
+        feature_selected = st.pills("选择特征", xl.sheet_names, selection_mode="single")
+        st.session_state.feature_selected = feature_selected
     
     if not feature_selected:
         st.warning("请先选择一个特征。")
-
 
 # --- 右侧：参数控制 ---
 with top_right2_cell:
@@ -169,8 +177,8 @@ if not st.session_state.features.empty:
     with st.expander("查看详细数据表"):
         st.dataframe(df_res, use_container_width=True)
     
-    if st.session_state.stock_chosen is None:
-        st.warning("请先在 DATA 页面选择标的和基准，以便绘制股价和超额收益。")
+    if st.session_state.get('stock_chosen') is None:
+        st.warning("请先在 数据 页面选择标的和基准，以便绘制股价和超额收益。")
     # --- 绘图开始 ---
     # 1. 初始化 (开启双轴模式，第三轴需手动配置)
     fig = make_subplots(specs=[[{"secondary_y": True}]])

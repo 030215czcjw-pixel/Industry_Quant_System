@@ -121,10 +121,10 @@ st.set_page_config(                         #设置网页的标题和图标
         )
 
 if not ('features' in st.session_state):                #检查必要的session_state变量
-    st.warning("请先在 FEATURES 页面生成特征。")
+    st.warning("请先在 特征 页面生成特征。")
     st.stop()
 if not ('stock_chosen' in st.session_state) or not ('base_chosen' in st.session_state):
-    st.warning("请先在 DATA 页面选择标的和基准。")
+    st.warning("请先在 数据 页面选择标的和基准。")
     st.stop()
 
 cols = st.columns([4, 1])                               #布局：两列，左侧宽度为4，右侧宽度为1
