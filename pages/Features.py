@@ -170,78 +170,103 @@ with top_right2_cell:
 
 if not st.session_state.features.empty:
     df_res = st.session_state.features
-    st.subheader(f"分析对象: {st.session_state.feature_selected}")
-    
-    # 显示数据概览
+    st.subheader(f"分析对象: {st.session_state.get('feature_selected', '未选择')}")
+
     with st.expander("查看详细数据表"):
         st.dataframe(df_res, use_container_width=True)
-    
-    if st.session_state.get('stock_chosen') is None:
-        st.warning("请先在 数据 页面选择标的和基准，以便绘制股价和超额收益。")
-    # --- 绘图开始 ---
-    # 1. 初始化 (开启双轴模式，第三轴需手动配置)
+
+    # --- 1. 绘图初始化 ---
     fig = make_subplots(specs=[[{"secondary_y": True}]])
-    
+
     safe_colors = [
         '#636EFA', '#00CC96', '#AB63FA', '#FFA15A', 
         '#19D3F3', '#FF6692', '#B6E880', '#FEF0D9'
     ]
-    
-    # 2. 绘制特征线 (左轴 y1)
-    for i, col in enumerate(df_res.columns):
-        line_color = safe_colors[i % len(safe_colors)]
-        fig.add_trace(
-            go.Scatter(
-                x=df_res.index, 
-                y=df_res[col], 
-                name=f"特征: {col}", 
-                mode='lines',
-                line=dict(color=line_color, width=1.5) 
-            ),
-            secondary_y=False
-        )
-    
-    # 3. 检查并读取 session_state 中的数据
-    has_stock = 'stock_data' in st.session_state and st.session_state.stock_data is not None
-    # 
+
+    # 检查是否需要第三个轴 (y3)
+    # 如果有“同比/环比”列，或者有“超额收益”，都需要启用 y3
+    ratio_cols = [c for c in df_res.columns if '同比' in c or '环比' in c]
+
+    # 检查超额收益
+    stock_chosen = st.session_state.get('stock_chosen')
+    has_stock = ('stock_data' in st.session_state) and (st.session_state.stock_data is not None) and (stock_chosen is not None)
     target_col = '累计超额收益' 
     has_excess = has_stock and (target_col in st.session_state.stock_data.columns)
 
+    # 只要有比率特征 OR 有超额收益，就开启 y3
+    use_y3 = (len(ratio_cols) > 0) or has_excess
+
+    # --- 2. 绘制特征线 (智能分轴) ---
+    for i, col in enumerate(df_res.columns):
+        line_color = safe_colors[i % len(safe_colors)]
+        
+       
+        is_ratio = '同比' in col or '环比' in col
+        
+        if is_ratio:
+            # 挂载到 y3 (右侧独立轴)，不和原始数据挤在一起
+            fig.add_trace(
+                go.Scatter(
+                    x=df_res.index, 
+                    y=df_res[col], 
+                    name=f"特征: {col} (右轴2)", 
+                    mode='lines',
+                    line=dict(color=line_color, width=1.5),
+                    yaxis="y3" # 强制指定到 y3
+                )
+            )
+        else:
+            # 原始数据、均线等 -> 留在左轴 (y1)
+            fig.add_trace(
+                go.Scatter(
+                    x=df_res.index, 
+                    y=df_res[col], 
+                    name=f"特征: {col} (左轴)", 
+                    mode='lines',
+                    line=dict(color=line_color, width=1.5) 
+                ),
+                secondary_y=False
+            )
+
+    # --- 3. 绘制股价与超额收益 ---
     if has_stock:
         stock_df = st.session_state.stock_data
-        stock_col_name = st.session_state.get('stock_chosen', '标的') 
         
-        # 绘制股价 (右轴1: y2)
+        # (1) 股价 -> 挂载到右轴1 (y2)
+        # 股价通常是 10-100 级别，和百分比分开比较好
         fig.add_trace(
             go.Scatter(
                 x=stock_df.index,
                 y=stock_df['收盘'],
-                name=f"股价: {stock_col_name}",
+                name=f"股价: {stock_chosen} (右轴1)",
                 mode='lines',
                 line=dict(color='red', width=2),
-                opacity=0.6 # 设为半透明，避免遮挡
+                opacity=0.5 
             ),
             secondary_y=True
         )
         
-        # 4. 直接调用已计算的超额收益 (右轴2: y3)
+        # (2) 超额收益 -> 挂载到右轴2 (y3)
+        # 它的量级也是 1.0 附近，和同比/环比放在一起很合适
         if has_excess:
             fig.add_trace(
                 go.Scatter(
                     x=stock_df.index,
-                    y=stock_df[target_col], # 直接调用 session_state 里的列
+                    y=stock_df[target_col], 
                     name="累计超额收益 (右轴2)",
                     mode='lines',
-                    line=dict(color='#ff7f0e', width=2), # 橙色
-                    fillcolor='rgba(255, 127, 14, 0.1)', # 极淡橙色
-                    yaxis="y3"                           # 【关键】挂载到第三轴
+                    line=dict(color='#ff7f0e', width=2),
+                    fillcolor='rgba(255, 127, 14, 0.1)', 
+                    yaxis="y3"                           
                 )
             )
+    else:
+        st.warning("提示：在“数据”页面选择标的后，此处可叠加显示股价和超额收益。")
 
-    # 5. 布局设置 (三轴适配)
-    # 动态调整 X 轴宽度：如果有超额收益数据，需要给右侧腾出放第三个轴的空间
-    domain_end = 0.88 if has_excess else 1.0
-    
+    # --- 4. 布局设置 (三轴适配) ---
+    # 如果启用了 y3，需要缩短 X 轴给右侧留空间
+    domain_end = 0.88 if use_y3 else 1.0
+
     layout_config = dict(
         height=600,
         hovermode="x unified",
@@ -250,48 +275,50 @@ if not st.session_state.features.empty:
         ),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
         
-        # 左轴：特征
-        yaxis=dict(title="特征数值"),
+        # 左轴 (y1)：原始数据
+        yaxis=dict(
+            title=dict(text="特征数值", font=dict(color="#636EFA"))
+        ),
         
-        # 右轴1：股价
+        # 右轴1 (y2)：股价
         yaxis2=dict(
-            title="股价", 
+            title=dict(text="股价", font=dict(color="red")),
             showgrid=False,
             side="right",
-            position=domain_end # 紧贴绘图区右侧
+            position=domain_end 
         )
     )
 
-    # 如果有超额收益，配置第三个轴
-    if has_excess:
+    # 配置第三个轴 (y3)：用于 同比/环比/超额
+    if use_y3:
         layout_config['yaxis3'] = dict(
-            title=dict(text="累计超额", font=dict(color="#ff7f0e")),
-            tickfont=dict(color="#ff7f0e"),
-            anchor="free",     # 自由定位
-            overlaying="y",    # 叠加在主图上
-            side="right",      # 放在右侧
-            position=0.96,     # 放在比 yaxis2 更右侧的位置
-            showgrid=False
+            title=dict(text="同比/环比/超额", font=dict(color="#ff7f0e")),
+            anchor="free",     
+            overlaying="y",    
+            side="right",      
+            position=0.96, # 放在最右边
+            showgrid=False,
+            tickformat='.2%' # 【关键】自动格式化为百分比 (20.00%)
         )
 
     fig.update_layout(**layout_config)
+
+    # 交互组件
     fig.update_xaxes(
         rangeselector=dict(
             buttons=list([
                 dict(count=6, label="6月", step="month", stepmode="backward"),
                 dict(count=1, label="1年", step="year", stepmode="backward"),
-                dict(count=5, label="5年", step="year", stepmode="backward"),
                 dict(step="all", label="全部")
             ]),
-            x=0.83,     # 按钮位置 X
-            y=1.1,  # 按钮位置 Y (放在图表上方)
-            bgcolor='rgba(255,255,255,0.8)' # 按钮背景
-        )
+            x=0,     
+            y=1.15,  
+            bgcolor='rgba(255,255,255,0.8)' 
+        ),
+        rangeslider_visible=True
     )
-    # 底部滑动条
-    fig.update_xaxes(rangeslider_visible=True)
-    
-    st.plotly_chart(fig, width='stretch')
+
+    st.plotly_chart(fig, use_container_width=True)
 
 else:
     st.info("请在右侧设置参数后，点击“生成/更新特征”按钮以查看结果。")

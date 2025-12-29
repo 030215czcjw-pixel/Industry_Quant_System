@@ -134,7 +134,8 @@ with bottom_cell:
             overlaying="y",    # 覆盖在主图上
             side="right",      # 放在右边
             position=1.0,      # 1.0 是紧贴右侧图表边缘，此轴会和 y2 重叠，下面调整位置
-            showgrid=False
+            showgrid=False,
+            tickformat='.2%'
         ),
         
         legend=dict(x=0, y=1.1, orientation='h'), # 图例放顶上
