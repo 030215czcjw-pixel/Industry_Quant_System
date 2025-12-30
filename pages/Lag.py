@@ -70,7 +70,7 @@ if uploaded_file is not None:
         
         # 显示数据预览
         with st.expander("📋 数据预览", expanded=True):
-            st.dataframe(df.head(10), use_container_width=True)
+            st.dataframe(df.head(10), width='stretch')
             st.info(f"数据维度: {df.shape[0]} 行 × {df.shape[1]} 列")
         
         # 数据列选择
@@ -134,7 +134,7 @@ if uploaded_file is not None:
                 )
         
         # 开始分析按钮
-        if st.button("🚀 开始分析", type="primary", use_container_width=True):
+        if st.button("🚀 开始分析", type="primary", width='stretch'):
             if column1 == column2:
                 st.error("❌ 请选择两个不同的指标进行分析！")
             else:
@@ -223,7 +223,7 @@ if uploaded_file is not None:
                             
                             # 生成图表
                             fig = analyzer.visualize(lag_df, best_lag, best_corr, output_file=None)
-                            st.plotly_chart(fig, use_container_width=True)
+                            st.plotly_chart(fig, width='stretch')
                             
                             # 详细数据表
                             st.markdown("---")
@@ -234,12 +234,12 @@ if uploaded_file is not None:
                             top_abs_corrs = lag_df.reindex(lag_df['correlation'].abs().nlargest(10).index)
                             st.dataframe(
                                 top_abs_corrs[['lag', 'correlation', 'p_value', 'n_points']],
-                                use_container_width=True
+                                width='stretch'
                             )
                             
                             # 完整数据表
                             with st.expander("查看完整数据表"):
-                                st.dataframe(lag_df, use_container_width=True)
+                                st.dataframe(lag_df, width='stretch')
                             
                             # 下载结果
                             st.markdown("---")
