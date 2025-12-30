@@ -6,7 +6,7 @@ from sklearn.preprocessing import StandardScaler
 from pandas.tseries.frequencies import to_offset
 
 # 设置中文字体
-plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'DejaVu Sans']  # 用来正常显示中文标签
+plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'DejaVu Sans']   # 用来正常显示中文标签
 plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
 
 class LagAnalyzer:
