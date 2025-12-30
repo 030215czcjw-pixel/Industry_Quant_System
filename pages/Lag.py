@@ -20,7 +20,7 @@ st.set_page_config(
 )
 
 # 设置中文字体
-plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'Arial Unicode MS']
+plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'DejaVu Sans'] 
 plt.rcParams['axes.unicode_minus'] = False
 
 # 导入滞后分析工具
