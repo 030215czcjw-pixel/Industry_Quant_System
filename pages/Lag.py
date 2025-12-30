@@ -5,7 +5,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy.stats import pearsonr
 from sklearn.preprocessing import StandardScaler
 import io
@@ -18,10 +17,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-# 设置中文字体
-plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'DejaVu Sans'] 
-plt.rcParams['axes.unicode_minus'] = False
 
 # 导入滞后分析工具
 from lag_analysis_tool import LagAnalyzer
@@ -228,8 +223,7 @@ if uploaded_file is not None:
                             
                             # 生成图表
                             fig = analyzer.visualize(lag_df, best_lag, best_corr, output_file=None)
-                            st.pyplot(fig)
-                            plt.close(fig)
+                            st.plotly_chart(fig, use_container_width=True)
                             
                             # 详细数据表
                             st.markdown("---")
@@ -264,18 +258,26 @@ if uploaded_file is not None:
                                 )
                             
                             with col2:
-                                # 下载图表
-                                buf = io.BytesIO()
-                                fig = analyzer.visualize(lag_df, best_lag, best_corr, output_file=None)
-                                fig.savefig(buf, format='png', dpi=300, bbox_inches='tight')
-                                buf.seek(0)
-                                st.download_button(
-                                    label="📥 下载图表 (PNG)",
-                                    data=buf,
-                                    file_name=f"滞后分析_{name1}_vs_{name2}.png",
-                                    mime="image/png"
-                                )
-                                plt.close(fig)
+                                # 下载图表（重用已生成的fig对象）
+                                try:
+                                    # 尝试保存为PNG（需要kaleido）
+                                    img_bytes = fig.to_image(format="png", width=1800, height=900, scale=2)
+                                    st.download_button(
+                                        label="📥 下载图表 (PNG)",
+                                        data=img_bytes,
+                                        file_name=f"滞后分析_{name1}_vs_{name2}.png",
+                                        mime="image/png"
+                                    )
+                                except Exception as e:
+                                    # 如果保存PNG失败，提供HTML下载
+                                    html_bytes = fig.to_html()
+                                    st.download_button(
+                                        label="📥 下载图表 (HTML)",
+                                        data=html_bytes.encode('utf-8'),
+                                        file_name=f"滞后分析_{name1}_vs_{name2}.html",
+                                        mime="text/html"
+                                    )
+                                    st.caption("💡 提示：如需下载PNG格式，请安装 kaleido: pip install kaleido")
                             
                             st.success("✅ 分析完成！")
                         
