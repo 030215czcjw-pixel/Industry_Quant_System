@@ -1,13 +1,11 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from scipy.stats import pearsonr
 from sklearn.preprocessing import StandardScaler
 from pandas.tseries.frequencies import to_offset
 
-# 设置中文字体
-plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'SimHei', 'DejaVu Sans']   # 用来正常显示中文标签
-plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
 
 class LagAnalyzer:
     """
@@ -356,109 +354,176 @@ class LagAnalyzer:
         lag_df: 滞后相关性DataFrame
         best_lag: 最优滞后期
         best_corr: 最大相关系数
-        output_file: 输出文件名（可选）
+        output_file: 输出文件名（可选，支持.html和.png/.jpg/.pdf等格式）
         """
-        fig = plt.figure(figsize=(18, 12))
+        # 预先计算散点图的相关系数（用于标题）
+        min_len = min(len(self.data1_clean), len(self.data2_clean))
+        corr_0, _ = pearsonr(self.data1_clean[:min_len], self.data2_clean[:min_len])
+        data1_aligned, data2_aligned, dates_aligned = self.align_data_by_lag(best_lag)
+        corr_best, _ = pearsonr(data1_aligned, data2_aligned)
+        
+        # 创建2x3的子图布局
+        fig = make_subplots(
+            rows=2, cols=3,
+            subplot_titles=(
+                '不同滞后期的相关系数',
+                '时间序列对比（标准化）',
+                f'最优滞后期对齐后的对比（滞后期={best_lag}月）',
+                f'散点图（无滞后，r={corr_0:.4f}）',
+                f'散点图（滞后期={best_lag}月，r={corr_best:.4f}）',
+                '相关系数随滞后期变化'
+            ),
+            specs=[[{"secondary_y": False}, {"secondary_y": False}, {"secondary_y": False}],
+                   [{"secondary_y": False}, {"secondary_y": False}, {"secondary_y": False}]],
+            vertical_spacing=0.12,
+            horizontal_spacing=0.1
+        )
         
         lags = lag_df['lag'].values
         corrs = lag_df['correlation'].values
         
         # 1. 滞后相关性柱状图
-        ax1 = plt.subplot(2, 3, 1)
         colors = ['red' if c < 0 else 'blue' for c in corrs]
-        bars = ax1.bar(lags, corrs, color=colors, alpha=0.6, edgecolor='black')
-        ax1.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
-        ax1.axvline(x=0, color='gray', linestyle='--', linewidth=1)
-        ax1.axvline(x=best_lag, color='green', linestyle='--', linewidth=2, label=f'最优滞后期={best_lag}')
-        ax1.set_xlabel('滞后期（月）', fontsize=12)
-        ax1.set_ylabel('相关系数', fontsize=12)
-        ax1.set_title('不同滞后期的相关系数', fontsize=14, fontweight='bold')
-        ax1.grid(True, alpha=0.3)
-        ax1.legend()
+        fig.add_trace(
+            go.Bar(x=lags, y=corrs, marker_color=colors, opacity=0.6, 
+                   marker_line=dict(color='black', width=1),
+                   name='相关系数', showlegend=False),
+            row=1, col=1
+        )
+        fig.add_hline(y=0, line_dash="solid", line_color="black", line_width=0.5, row=1, col=1)
+        fig.add_vline(x=0, line_dash="dash", line_color="gray", line_width=1, row=1, col=1)
+        fig.add_vline(x=best_lag, line_dash="dash", line_color="green", line_width=2, 
+                     annotation_text=f'最优滞后期={best_lag}', row=1, col=1)
+        fig.update_xaxes(title_text='滞后期（月）', row=1, col=1)
+        fig.update_yaxes(title_text='相关系数', row=1, col=1)
         
         # 2. 时间序列对比（原始数据，标准化）
-        ax2 = plt.subplot(2, 3, 2)
         scaler = StandardScaler()
         data1_scaled = scaler.fit_transform(self.data1_clean.reshape(-1, 1)).flatten()
         data2_scaled = scaler.fit_transform(self.data2_clean.reshape(-1, 1)).flatten()
         
-        ax2.plot(self.dates_clean, data1_scaled, 'b-', linewidth=1.5, label=f'{self.name1}（标准化）', alpha=0.7)
-        ax2.plot(self.dates_clean, data2_scaled, 'r-', linewidth=1.5, label=f'{self.name2}（标准化）', alpha=0.7)
-        ax2.set_xlabel('日期', fontsize=12)
-        ax2.set_ylabel('标准化值', fontsize=12)
-        ax2.set_title('时间序列对比（标准化）', fontsize=14, fontweight='bold')
-        ax2.grid(True, alpha=0.3)
-        ax2.legend()
-        plt.setp(ax2.xaxis.get_majorticklabels(), rotation=45, ha='right')
+        fig.add_trace(
+            go.Scatter(x=self.dates_clean, y=data1_scaled, mode='lines', 
+                      name=f'{self.name1}（标准化）', line=dict(color='blue', width=1.5), 
+                      opacity=0.7, showlegend=False),
+            row=1, col=2
+        )
+        fig.add_trace(
+            go.Scatter(x=self.dates_clean, y=data2_scaled, mode='lines', 
+                      name=f'{self.name2}（标准化）', line=dict(color='red', width=1.5), 
+                      opacity=0.7, showlegend=False),
+            row=1, col=2
+        )
+        fig.update_xaxes(title_text='日期', row=1, col=2)
+        fig.update_yaxes(title_text='标准化值', row=1, col=2)
         
         # 3. 最优滞后期对齐后的对比
-        ax3 = plt.subplot(2, 3, 3)
-        data1_aligned, data2_aligned, dates_aligned = self.align_data_by_lag(best_lag)
-        
         data1_aligned_scaled = scaler.fit_transform(data1_aligned.reshape(-1, 1)).flatten()
         data2_aligned_scaled = scaler.fit_transform(data2_aligned.reshape(-1, 1)).flatten()
         
         lag1_label = f'{self.name1}（滞后{abs(best_lag) if best_lag<0 else 0}月）'
         lag2_label = f'{self.name2}（滞后{best_lag if best_lag>0 else 0}月）'
         
-        ax3.plot(dates_aligned, data1_aligned_scaled, 'b-', linewidth=1.5, label=lag1_label, alpha=0.7)
-        ax3.plot(dates_aligned, data2_aligned_scaled, 'r-', linewidth=1.5, label=lag2_label, alpha=0.7)
-        ax3.set_xlabel('日期', fontsize=12)
-        ax3.set_ylabel('标准化值', fontsize=12)
-        ax3.set_title(f'最优滞后期对齐后的对比（滞后期={best_lag}月）', fontsize=14, fontweight='bold')
-        ax3.grid(True, alpha=0.3)
-        ax3.legend()
-        plt.setp(ax3.xaxis.get_majorticklabels(), rotation=45, ha='right')
+        fig.add_trace(
+            go.Scatter(x=dates_aligned, y=data1_aligned_scaled, mode='lines', 
+                      name=lag1_label, line=dict(color='blue', width=1.5), 
+                      opacity=0.7, showlegend=False),
+            row=1, col=3
+        )
+        fig.add_trace(
+            go.Scatter(x=dates_aligned, y=data2_aligned_scaled, mode='lines', 
+                      name=lag2_label, line=dict(color='red', width=1.5), 
+                      opacity=0.7, showlegend=False),
+            row=1, col=3
+        )
+        fig.update_xaxes(title_text='日期', row=1, col=3)
+        fig.update_yaxes(title_text='标准化值', row=1, col=3)
         
         # 4. 散点图（无滞后）
-        ax4 = plt.subplot(2, 3, 4)
-        min_len = min(len(self.data1_clean), len(self.data2_clean))
-        ax4.scatter(self.data1_clean[:min_len], self.data2_clean[:min_len], alpha=0.5, s=30)
-        corr_0, _ = pearsonr(self.data1_clean[:min_len], self.data2_clean[:min_len])
-        ax4.set_xlabel(self.name1, fontsize=12)
-        ax4.set_ylabel(self.name2, fontsize=12)
-        ax4.set_title(f'散点图（无滞后，r={corr_0:.4f}）', fontsize=14, fontweight='bold')
-        ax4.grid(True, alpha=0.3)
+        
+        fig.add_trace(
+            go.Scatter(x=self.data1_clean[:min_len], y=self.data2_clean[:min_len], 
+                      mode='markers', marker=dict(size=5, opacity=0.5), 
+                      name='数据点', showlegend=False),
+            row=2, col=1
+        )
         
         # 添加趋势线
         z = np.polyfit(self.data1_clean[:min_len], self.data2_clean[:min_len], 1)
         p = np.poly1d(z)
-        ax4.plot(self.data1_clean[:min_len], p(self.data1_clean[:min_len]), "r--", alpha=0.8, linewidth=2, label='趋势线')
-        ax4.legend()
+        trend_x = np.linspace(self.data1_clean[:min_len].min(), self.data1_clean[:min_len].max(), 100)
+        trend_y = p(trend_x)
+        fig.add_trace(
+            go.Scatter(x=trend_x, y=trend_y, mode='lines', 
+                      name='趋势线', line=dict(color='red', width=2, dash='dash'), 
+                      opacity=0.8, showlegend=False),
+            row=2, col=1
+        )
+        fig.update_xaxes(title_text=self.name1, row=2, col=1)
+        fig.update_yaxes(title_text=self.name2, row=2, col=1)
         
         # 5. 散点图（最优滞后期）
-        ax5 = plt.subplot(2, 3, 5)
-        ax5.scatter(data1_aligned, data2_aligned, alpha=0.5, s=30, color='green')
-        corr_best, _ = pearsonr(data1_aligned, data2_aligned)
-        ax5.set_xlabel(self.name1, fontsize=12)
-        ax5.set_ylabel(self.name2, fontsize=12)
-        ax5.set_title(f'散点图（滞后期={best_lag}月，r={corr_best:.4f}）', fontsize=14, fontweight='bold')
-        ax5.grid(True, alpha=0.3)
+        
+        fig.add_trace(
+            go.Scatter(x=data1_aligned, y=data2_aligned, mode='markers', 
+                      marker=dict(size=5, opacity=0.5, color='green'), 
+                      name='数据点', showlegend=False),
+            row=2, col=2
+        )
         
         # 添加趋势线
         z = np.polyfit(data1_aligned, data2_aligned, 1)
         p = np.poly1d(z)
-        ax5.plot(data1_aligned, p(data1_aligned), "r--", alpha=0.8, linewidth=2, label='趋势线')
-        ax5.legend()
+        trend_x = np.linspace(data1_aligned.min(), data1_aligned.max(), 100)
+        trend_y = p(trend_x)
+        fig.add_trace(
+            go.Scatter(x=trend_x, y=trend_y, mode='lines', 
+                      name='趋势线', line=dict(color='red', width=2, dash='dash'), 
+                      opacity=0.8, showlegend=False),
+            row=2, col=2
+        )
+        fig.update_xaxes(title_text=self.name1, row=2, col=2)
+        fig.update_yaxes(title_text=self.name2, row=2, col=2)
         
         # 6. 相关性变化趋势
-        ax6 = plt.subplot(2, 3, 6)
-        ax6.plot(lag_df['lag'], lag_df['correlation'], 'o-', linewidth=2, markersize=6, color='purple')
-        ax6.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
-        ax6.axvline(x=0, color='gray', linestyle='--', linewidth=1)
-        ax6.axvline(x=best_lag, color='green', linestyle='--', linewidth=2, label=f'最优滞后期={best_lag}')
-        ax6.set_xlabel('滞后期（月）', fontsize=12)
-        ax6.set_ylabel('相关系数', fontsize=12)
-        ax6.set_title('相关系数随滞后期变化', fontsize=14, fontweight='bold')
-        ax6.grid(True, alpha=0.3)
-        ax6.legend()
+        fig.add_trace(
+            go.Scatter(x=lag_df['lag'], y=lag_df['correlation'], mode='lines+markers', 
+                      name='相关系数', line=dict(color='purple', width=2), 
+                      marker=dict(size=6), showlegend=False),
+            row=2, col=3
+        )
+        fig.add_hline(y=0, line_dash="solid", line_color="black", line_width=0.5, row=2, col=3)
+        fig.add_vline(x=0, line_dash="dash", line_color="gray", line_width=1, row=2, col=3)
+        fig.add_vline(x=best_lag, line_dash="dash", line_color="green", line_width=2, 
+                     annotation_text=f'最优滞后期={best_lag}', row=2, col=3)
+        fig.update_xaxes(title_text='滞后期（月）', row=2, col=3)
+        fig.update_yaxes(title_text='相关系数', row=2, col=3)
         
-        plt.suptitle(f'{self.name1} 与 {self.name2} 滞后关系分析', fontsize=16, fontweight='bold', y=0.995)
-        plt.tight_layout()
+        # 更新整体布局
+        fig.update_layout(
+            title_text=f'{self.name1} 与 {self.name2} 滞后关系分析',
+            title_x=0.5,
+            title_font_size=16,
+            height=900,
+            showlegend=False
+        )
         
+        # 保存图表
         if output_file:
-            plt.savefig(output_file, dpi=300, bbox_inches='tight')
-            print(f"\n可视化图表已保存到: {output_file}")
+            if output_file.endswith('.html'):
+                fig.write_html(output_file)
+                print(f"\n可视化图表已保存到: {output_file}")
+            else:
+                # 尝试保存为静态图片（需要 kaleido）
+                try:
+                    fig.write_image(output_file, width=1800, height=900, scale=2)
+                    print(f"\n可视化图表已保存到: {output_file}")
+                except Exception as e:
+                    # 如果保存图片失败，保存为HTML
+                    html_file = output_file.rsplit('.', 1)[0] + '.html'
+                    fig.write_html(html_file)
+                    print(f"\n无法保存为图片格式，已保存为HTML: {html_file}")
+                    print(f"提示: 如需保存为图片，请安装 kaleido: pip install kaleido")
         
         return fig
     
