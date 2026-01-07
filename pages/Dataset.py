@@ -9,7 +9,7 @@ st.set_page_config(
         )
 
 stocks = ["中国神华", "综合交易价_CCTD秦皇岛动力煤(Q5500)", "招商轮船", "南方航空"]
-bases = ["沪深300"]
+bases = ["沪深300", "零基准"]
 
 cols = st.columns([1, 1])
 top_left_cell = cols[0].container(
@@ -50,12 +50,25 @@ with top_right_cell:
         selection_mode="single"
     )
     st.session_state.base_chosen = base_chosen
-    try:
-        base_data = pd.read_excel('data/stock_data.xlsx', sheet_name=base_chosen, index_col='date', parse_dates=True)
-        st.session_state.base_data = base_data
-    except Exception as e:
-        st.error(f"无法加载数据: {e}")
-        st.stop()
+    
+    if base_chosen == "零基准":
+        st.caption("零基准下的超额序列存在一定计算精度问题, 超额序列和原始序列不完全吻合")
+        # 如果选择零基准，创建一个与标的价格索引相同、收盘价恒定为1.0的数据框
+        # 使用1.0可以确保 pct_change() 计算结果恒为 0，不会产生 NaN
+        if 'stock_data' in st.session_state:
+            base_data = pd.DataFrame(index=st.session_state.stock_data.index)
+            base_data['close'] = 1.0 
+            st.session_state.base_data = base_data
+        else:
+            st.warning("请先选择标的以对齐日期。")
+            st.stop()
+    else:
+        try:
+            base_data = pd.read_excel('data/stock_data.xlsx', sheet_name=base_chosen, index_col='date', parse_dates=True)
+            st.session_state.base_data = base_data
+        except Exception as e:
+            st.error(f"无法加载数据: {e}")
+            st.stop()
 
 cols = st.columns(1)
 bottom_cell = cols[0].container(
@@ -63,10 +76,18 @@ bottom_cell = cols[0].container(
 )
 
 # 计算超额收益
+# 零基准存在计算精度问题
 st.session_state.stock_data['收益率'] = st.session_state.stock_data['收盘'].pct_change()
-st.session_state.base_data['收益率'] = st.session_state.base_data['close'].pct_change()
-st.session_state.stock_data['超额收益率'] = st.session_state.stock_data['收益率'] - st.session_state.base_data['收益率']
-st.session_state.stock_data['累计超额收益'] = (1 + st.session_state.stock_data['超额收益率']).cumprod()
+if st.session_state.base_chosen == "零基准":
+    # 直接使用原始序列进行归一化
+    st.session_state.stock_data['超额收益率'] = st.session_state.stock_data['收益率'].fillna(0)
+    st.session_state.stock_data['累计超额收益'] = st.session_state.stock_data['收盘'] / st.session_state.stock_data['收盘'].iloc[0]
+else:
+    # 正常基准下，计算相对于基准的超额收益率，再累乘生成超额净值
+    st.session_state.base_data['收益率'] = st.session_state.base_data['close'].pct_change()
+    st.session_state.stock_data['超额收益率'] = (st.session_state.stock_data['收益率'].fillna(0) - 
+                                             st.session_state.base_data['收益率'].fillna(0))
+    st.session_state.stock_data['累计超额收益'] = (1 + st.session_state.stock_data['超额收益率']).cumprod()
 
 with bottom_cell:
     st.caption("走势对比", text_alignment="center")

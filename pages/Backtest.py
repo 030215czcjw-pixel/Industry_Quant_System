@@ -4,7 +4,8 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-class BayesianStrategyBacktester:           #贝叶斯策略回测器
+# 贝叶斯策略回测器
+class BayesianStrategyBacktester:           
     def __init__(self, stock_data, baseline_data, feature_data, profit_setted, observation_periods, holding_period):
         """
         初始化回测器，执行数据对齐和基础收益率计算。

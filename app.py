@@ -11,10 +11,6 @@ pages = {
         st.Page("pages/Dataset.py", title="数据管理", icon="📊"),
         st.Page("pages/Features.py", title="特征工程", icon="⚙️"),
         st.Page("pages/Backtest.py", title="策略回测", icon="📈"),
-        st.Page("pages/Lag.py", title="滞后关系分析", icon="📊"),
-    ],
-    "整合":[
-        st.Page("pages/Combine.py"),
     ],
     "帮助":[
         st.Page("pages/About.py", title="关于"),
