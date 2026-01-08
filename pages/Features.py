@@ -3,10 +3,80 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from utils.processing import (
-    Industry_list, SHEET_LIST, fetch_xl_object, 
-    load_and_clean_feature, generate_features
-)
+from filterpy.kalman import KalmanFilter
+
+# --- 配置与常量 ---
+Industry_list = ["煤炭", "交运"]
+SHEET_LIST = {
+    "交运": "1VVTAG1ixDe50ysjMZEAAZyvYkUbiHBvolh0oaYn8Mxw", 
+    "煤炭": "1P3446_9mBi-7qrAMi78F1gHDHGIOCjw-"
+} 
+
+def apply_kalman(series, Q_val=0.01, R_val=0.1):
+    if isinstance(series, pd.DataFrame):
+        target = series.iloc[:, 0]
+    else:
+        target = series
+    vals = target.ffill().bfill().to_numpy()
+    kf = KalmanFilter(dim_x=1, dim_z=1)
+    kf.x = np.array([[vals[0]]])
+    kf.F = np.array([[1.]])
+    kf.H = np.array([[1.]])
+    kf.P *= 10.
+    kf.R = R_val
+    kf.Q = Q_val
+    filtered_results = []
+    for z in vals:
+        kf.predict()
+        kf.update(z)
+        filtered_results.append(kf.x[0, 0])
+    return pd.Series(filtered_results, index=target.index, name=getattr(target, 'name', 'filtered'))
+
+def generate_features(data, n_lag, n_MA, n_D, n_yoy, use_kalman):
+    df = pd.DataFrame(index=data.index)
+    df['原始数据'] = data.iloc[:, 0].astype('float64')
+    if use_kalman:
+        df['卡尔曼滤波'] = apply_kalman(df['原始数据'])
+        base_series = df['卡尔曼滤波'] 
+    else:
+        base_series = df['原始数据']
+    working_df = pd.DataFrame(index=df.index)
+    has_transform = False
+    if n_D > 0:
+        working_df[f'差分{n_D}'] = base_series.diff(n_D)
+        has_transform = True
+    if n_yoy:
+        for yoy in n_yoy:
+            col_name = f'同比{yoy}' if yoy > 1 else '环比'
+            working_df[col_name] = base_series.pct_change(yoy)
+            has_transform = True
+    if not has_transform:
+        working_df['数值'] = base_series
+    if n_lag > 0:
+        for col in working_df.columns:
+            working_df[col] = working_df[col].shift(n_lag)
+            working_df.rename(columns={col: f"{col}_Lag{n_lag}"}, inplace=True)
+    if n_MA > 0:
+        for col in list(working_df.columns):
+            working_df[f'{col}_MA{n_MA}'] = working_df[col].rolling(window=n_MA).mean()
+    return pd.concat([df, working_df], axis=1)
+
+def load_and_clean_feature(xl_obj, sheet_name):
+    try:
+        df = xl_obj.parse(sheet_name)
+        for col in df.columns:
+            if '日期' in str(col) or 'Date' in str(col) or 'time' in str(col).lower():
+                df[col] = pd.to_datetime(df[col])
+                df.set_index(col, inplace=True)
+                return df
+        return df
+    except Exception as e:
+        st.error(f"读取数据出错: {e}")
+        return pd.DataFrame()
+
+def fetch_xl_object(sheet_id):
+    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
+    return pd.ExcelFile(url)
 
 # --- 页面配置 ---
 st.set_page_config(page_title="特征工程", layout="wide")
@@ -75,12 +145,7 @@ with top_right2_cell:
         if 'yoy_val' not in st.session_state:
             st.session_state['yoy_val'] = 0
 
-        # 快速选择回调逻辑
-        def update_yoy_slider():
-            if st.session_state.get('yoy_pills'):
-                st.session_state.yoy_val = st.session_state.yoy_pills
-
-        st.pills("同环比周期", [1, 12, 52, 252], selection_mode="single", key="yoy_pills", on_change=update_yoy_slider)
+        st.pills("同环比周期", [1, 12, 52, 252], selection_mode="multi", key="yoy_pills")
         n_yoy_val = st.slider("", 0, 365, key='yoy_val')
         n_D = st.number_input("差分期", 0, 365, 0)
             
@@ -98,9 +163,16 @@ with top_right2_cell:
             # 加载原始数据
             raw_df = load_and_clean_feature(xl, feature_selected)
             if not raw_df.empty:
+                # 汇总所有同比环比周期
+                yoy_list = []
+                if st.session_state.get('yoy_pills'):
+                    yoy_list.extend(st.session_state.yoy_pills)
+                if n_yoy_val > 0 and n_yoy_val not in yoy_list:
+                    yoy_list.append(n_yoy_val)
+                
                 # 计算特征
                 st.session_state.features = generate_features(
-                    raw_df, n_lag, n_MA, n_D, [n_yoy_val] if n_yoy_val > 0 else [], use_kalman
+                    raw_df, n_lag, n_MA, n_D, yoy_list, use_kalman
                 )
             else:
                 st.error("所选Sheet数据为空或无法解析日期。")

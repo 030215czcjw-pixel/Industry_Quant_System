@@ -9,7 +9,6 @@ pages = {
     "系统功能": [
         st.Page("Home.py", title="主页", icon="🏠"),
         st.Page("pages/Dataset.py", title="数据管理", icon="📊"),
-        st.Page("pages/Correlation.py", title="滞后期预判", icon="🔍"),
         st.Page("pages/Features.py", title="特征工程", icon="⚙️"),
         st.Page("pages/Backtest.py", title="策略回测", icon="📈"),
     ],
