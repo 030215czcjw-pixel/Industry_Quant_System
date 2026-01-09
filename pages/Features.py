@@ -32,38 +32,37 @@ def apply_kalman(series, Q_val=0.01, R_val=0.1):
         filtered_results.append(kf.x[0, 0])
     return pd.Series(filtered_results, index=target.index, name=getattr(target, 'name', 'filtered'))
 
-def apply_feature_transforms(series, methods=[]):
+def apply_feature_transforms(series, mode="无"):
     """
-    数值变换处理管道
+    数值变换处理 (单选互斥)
     - 5%缩尾: 基于分位数
     - 3-Sigma: 基于均值标准差
-    - Log Transform: 对数处理 (处理负值)
+    - Log Transform: 对数处理 (针对特征变换后的数据量级进行处理)
     - Z-score: 标准化
     - Robust Scaling: 基于中位数和MAD的标准化
     """
-    if series.empty or not methods:
+    if series.empty or mode == "无":
         return series
     
     s = series.copy()
-    for mode in methods:
-        if mode == "5%缩尾":
-            s = s.clip(s.quantile(0.05), s.quantile(0.95))
-        elif mode == "3-Sigma缩尾":
-            mu, sigma = s.mean(), s.std()
-            s = s.clip(mu - 3 * sigma, mu + 3 * sigma)
-        elif mode == "Log Transform":
-            # 对数变换，处理正负值
-            s = np.sign(s) * np.log1p(np.abs(s))
-        elif mode == "Z-score标准化":
-            s = (s - s.mean()) / (s.std() + 1e-9)
-        elif mode == "Robust Scaling":
-            median = s.median()
-            mad = (s - median).abs().median()
-            # 1.4826 为标准正态分布下的缩放因子
-            s = (s - median) / (1.4826 * mad + 1e-9)
+    if mode == "5%缩尾":
+        s = s.clip(s.quantile(0.05), s.quantile(0.95))
+    elif mode == "3-Sigma缩尾":
+        mu, sigma = s.mean(), s.std()
+        s = s.clip(mu - 3 * sigma, mu + 3 * sigma)
+    elif mode == "Log Transform":
+        # 对数变换，处理正负值 (针对特征变换后的数据量级进行处理)
+        s = np.sign(s) * np.log1p(np.abs(s))
+    elif mode == "Z-score标准化":
+        s = (s - s.mean()) / (s.std() + 1e-9)
+    elif mode == "Robust Scaling":
+        median = s.median()
+        mad = (s - median).abs().median()
+        # 1.4826 为标准正态分布下的缩放因子
+        s = (s - median) / (1.4826 * mad + 1e-9)
     return s
 
-def generate_features(data, n_lag, n_MA, n_D, n_yoy, use_kalman, transform_methods=[]):
+def generate_features(data, n_lag, n_MA, n_D, n_yoy, use_kalman, transform_method="无"):
     df = pd.DataFrame(index=data.index)
     df['原始数据'] = data.iloc[:, 0].astype('float64')
     if use_kalman:
@@ -84,9 +83,9 @@ def generate_features(data, n_lag, n_MA, n_D, n_yoy, use_kalman, transform_metho
     if not has_transform:
         working_df['数值'] = base_series
     
-    if transform_methods:
+    if transform_method != "无":
         for col in working_df.columns:
-            working_df[col] = apply_feature_transforms(working_df[col], transform_methods)
+            working_df[col] = apply_feature_transforms(working_df[col], transform_method)
 
     if n_lag > 0:
         for col in working_df.columns:
@@ -190,11 +189,12 @@ with top_right2_cell:
         n_lag = st.slider("滞后期", 0, 365, 0, help="特征整体向后平移")
 
     with c3_5:
-        st.write("**4. 缩尾方法**")
-        transform_methods = st.multiselect(
-            "选择变换(顺序执行)", 
-            ["5%缩尾", "3-Sigma缩尾", "Log", "Z-score标准化", "中位数+MAD标准化"],
-            placeholder="选择方法",
+        st.write("**4. 数值变换**")
+        transform_options = ["无", "5%缩尾", "3-Sigma缩尾", "Log Transform", "Z-score标准化", "Robust Scaling"]
+        transform_method = st.selectbox(
+            "选择变换", 
+            options=transform_options,
+            index=0,
             label_visibility="collapsed"
         )
 
@@ -218,7 +218,7 @@ with top_right2_cell:
                 # 计算特征
                 st.session_state.features = generate_features(
                     raw_df, n_lag, n_MA, n_D, yoy_list, use_kalman,
-                    transform_methods=transform_methods
+                    transform_method=transform_method
                 )
             else:
                 st.error("所选Sheet数据为空或无法解析日期。")
