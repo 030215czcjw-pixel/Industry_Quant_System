@@ -32,7 +32,38 @@ def apply_kalman(series, Q_val=0.01, R_val=0.1):
         filtered_results.append(kf.x[0, 0])
     return pd.Series(filtered_results, index=target.index, name=getattr(target, 'name', 'filtered'))
 
-def generate_features(data, n_lag, n_MA, n_D, n_yoy, use_kalman):
+def apply_feature_transforms(series, methods=[]):
+    """
+    数值变换处理管道
+    - 5%缩尾: 基于分位数
+    - 3-Sigma: 基于均值标准差
+    - Log Transform: 对数处理 (处理负值)
+    - Z-score: 标准化
+    - Robust Scaling: 基于中位数和MAD的标准化
+    """
+    if series.empty or not methods:
+        return series
+    
+    s = series.copy()
+    for mode in methods:
+        if mode == "5%缩尾":
+            s = s.clip(s.quantile(0.05), s.quantile(0.95))
+        elif mode == "3-Sigma缩尾":
+            mu, sigma = s.mean(), s.std()
+            s = s.clip(mu - 3 * sigma, mu + 3 * sigma)
+        elif mode == "Log Transform":
+            # 对数变换，处理正负值
+            s = np.sign(s) * np.log1p(np.abs(s))
+        elif mode == "Z-score标准化":
+            s = (s - s.mean()) / (s.std() + 1e-9)
+        elif mode == "Robust Scaling":
+            median = s.median()
+            mad = (s - median).abs().median()
+            # 1.4826 为标准正态分布下的缩放因子
+            s = (s - median) / (1.4826 * mad + 1e-9)
+    return s
+
+def generate_features(data, n_lag, n_MA, n_D, n_yoy, use_kalman, transform_methods=[]):
     df = pd.DataFrame(index=data.index)
     df['原始数据'] = data.iloc[:, 0].astype('float64')
     if use_kalman:
@@ -52,6 +83,11 @@ def generate_features(data, n_lag, n_MA, n_D, n_yoy, use_kalman):
             has_transform = True
     if not has_transform:
         working_df['数值'] = base_series
+    
+    if transform_methods:
+        for col in working_df.columns:
+            working_df[col] = apply_feature_transforms(working_df[col], transform_methods)
+
     if n_lag > 0:
         for col in working_df.columns:
             working_df[col] = working_df[col].shift(n_lag)
@@ -82,10 +118,10 @@ def fetch_xl_object(sheet_id):
 st.set_page_config(page_title="特征工程", layout="wide")
 
 # --- 布局结构 ---
-cols = st.columns([1, 1, 2], vertical_alignment="top")
-top_left_cell = cols[0].container(border=True, height=300)
-top_right1_cell = cols[1].container(border=True, height=300)
-top_right2_cell = cols[2].container(border=True, height=300)
+cols = st.columns([0.5, 1, 2], vertical_alignment="top")
+top_left_cell = cols[0].container(border=True, height=400)
+top_right1_cell = cols[1].container(border=True, height=400)
+top_right2_cell = cols[2].container(border=True, height=400)
 
 # --- 初始化 Session State ---
 if 'xl_object' not in st.session_state:
@@ -133,8 +169,8 @@ with top_right1_cell:
 with top_right2_cell:
     st.caption("特征处理")
     
-    # 采用并排的四列布局展示四个步骤
-    c1, c2, c3, c4 = st.columns([1, 1.2, 1, 1])
+    # 采用并排的五列布局展示五个步骤
+    c1, c2, c3, c3_5, c4 = st.columns([1, 1.2, 0.8, 1, 1])
     
     with c1:
         st.write("**1. 滤波**")
@@ -145,7 +181,7 @@ with top_right2_cell:
         if 'yoy_val' not in st.session_state:
             st.session_state['yoy_val'] = 0
 
-        st.pills("同环比周期", [1, 12, 52, 252], selection_mode="multi", key="yoy_pills")
+        st.pills("同环比周期（可多选）", [1, 12, 52, 252], selection_mode="multi", key="yoy_pills")
         n_yoy_val = st.slider("", 0, 365, key='yoy_val')
         n_D = st.number_input("差分期", 0, 365, 0)
             
@@ -153,8 +189,17 @@ with top_right2_cell:
         st.write("**3. 滞后**")
         n_lag = st.slider("滞后期", 0, 365, 0, help="特征整体向后平移")
 
+    with c3_5:
+        st.write("**4. 缩尾方法**")
+        transform_methods = st.multiselect(
+            "选择变换(顺序执行)", 
+            ["5%缩尾", "3-Sigma缩尾", "Log", "Z-score标准化", "中位数+MAD标准化"],
+            placeholder="选择方法",
+            label_visibility="collapsed"
+        )
+
     with c4:
-        st.write("**4. 移动平均**")
+        st.write("**5. 移动平均**")
         n_MA = st.number_input("MA窗口", 0, 365, 0, help="对处理后的序列做平滑")
 
     # --- 按钮区域 ---
@@ -172,7 +217,8 @@ with top_right2_cell:
                 
                 # 计算特征
                 st.session_state.features = generate_features(
-                    raw_df, n_lag, n_MA, n_D, yoy_list, use_kalman
+                    raw_df, n_lag, n_MA, n_D, yoy_list, use_kalman,
+                    transform_methods=transform_methods
                 )
             else:
                 st.error("所选Sheet数据为空或无法解析日期。")
