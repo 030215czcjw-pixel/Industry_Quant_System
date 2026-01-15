@@ -101,7 +101,8 @@ with bottom_cell:
             y=st.session_state.stock_data['收盘'],
             name=f"{stock_chosen} (左轴)",
             line=dict(color='red', width=1.5),
-            opacity=0.8
+            opacity=0.8,
+            connectgaps=True  # 连接缺失值之间的点
         ),
         secondary_y=False
     )
@@ -113,7 +114,8 @@ with bottom_cell:
             y=st.session_state.base_data['close'],
             name=f"{base_chosen} (右轴1)",
             line=dict(color='grey', width=1.5),
-            opacity=0.5 
+            opacity=0.5,
+            connectgaps=True  # 连接缺失值之间的点
         ),
         secondary_y=True
     )
@@ -126,10 +128,11 @@ with bottom_cell:
             y=st.session_state.stock_data['累计超额收益'],
             name="累计超额收益 (右轴2)",
             line=dict(color='#ff7f0e', width=1.5),
-            opacity=0.5, 
+            opacity=0.5,
             fill='tozeroy',                      # 填充颜色，更醒目
             fillcolor='rgba(255, 127, 14, 0.1)', # 半透明橙色
-            yaxis="y3"                           # 关键：指定挂载到 y3 轴
+            yaxis="y3",                          # 关键：指定挂载到 y3 轴
+            connectgaps=True  # 连接缺失值之间的点
         )
     )
 

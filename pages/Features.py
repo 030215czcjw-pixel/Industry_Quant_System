@@ -127,6 +127,8 @@ if 'xl_object' not in st.session_state:
     st.session_state['xl_object'] = None
 if 'features' not in st.session_state:
     st.session_state['features'] = pd.DataFrame()
+if 'feature_pool' not in st.session_state:
+    st.session_state['feature_pool'] = pd.DataFrame()
 
 # --- 左上角：数据源加载 ---
 with top_left_cell:
@@ -204,24 +206,57 @@ with top_right2_cell:
 
     # --- 按钮区域 ---
     if feature_selected:
-        if st.button("生成/更新特征", type="primary", width='stretch'):
-            # 加载原始数据
-            raw_df = load_and_clean_feature(xl, feature_selected)
-            if not raw_df.empty:
-                # 汇总所有同比环比周期
-                yoy_list = []
-                if st.session_state.get('yoy_pills'):
-                    yoy_list.extend(st.session_state.yoy_pills)
-                if n_yoy_val > 0 and n_yoy_val not in yoy_list:
-                    yoy_list.append(n_yoy_val)
-                
-                # 计算特征
-                st.session_state.features = generate_features(
-                    raw_df, n_lag, n_MA, n_D, yoy_list, use_kalman,
-                    transform_method=transform_method
-                )
-            else:
-                st.error("所选Sheet数据为空或无法解析日期。")
+        col_btn1, col_btn2 = st.columns(2)
+
+        with col_btn1:
+            if st.button("📊 生成特征", type="primary", use_container_width=True):
+                # 加载原始数据
+                raw_df = load_and_clean_feature(xl, feature_selected)
+                if not raw_df.empty:
+                    # 汇总所有同比环比周期
+                    yoy_list = []
+                    if st.session_state.get('yoy_pills'):
+                        yoy_list.extend(st.session_state.yoy_pills)
+                    if n_yoy_val > 0 and n_yoy_val not in yoy_list:
+                        yoy_list.append(n_yoy_val)
+
+                    # 计算特征
+                    st.session_state.features = generate_features(
+                        raw_df, n_lag, n_MA, n_D, yoy_list, use_kalman,
+                        transform_method=transform_method
+                    )
+                    st.success("✅ 特征已生成，请查看下方预览")
+                else:
+                    st.error("所选Sheet数据为空或无法解析日期。")
+
+        with col_btn2:
+            if st.button("➕ 添加到特征池", use_container_width=True, disabled=st.session_state.features.empty):
+                if not st.session_state.features.empty:
+                    # 给列名添加特征源标识
+                    features_copy = st.session_state.features.copy()
+
+                    # 重命名所有列（包括原始数据和卡尔曼滤波）
+                    rename_dict = {}
+                    for col in features_copy.columns:
+                        new_name = f"{feature_selected}_{col}"
+                        rename_dict[col] = new_name
+
+                    features_copy.rename(columns=rename_dict, inplace=True)
+
+                    # 合并到特征池（按日期索引对齐）
+                    if st.session_state.feature_pool.empty:
+                        st.session_state.feature_pool = features_copy
+                    else:
+                        # 只添加不在特征池中的列
+                        new_cols = [c for c in features_copy.columns if c not in st.session_state.feature_pool.columns]
+                        if new_cols:
+                            st.session_state.feature_pool = pd.concat(
+                                [st.session_state.feature_pool, features_copy[new_cols]],
+                                axis=1
+                            )
+                            st.success(f"✅ 已添加 {len(new_cols)} 个特征到特征池")
+                        else:
+                            st.warning("⚠️ 这些特征已存在于特征池中")
 
 
 # --- 左侧：结果展示 (表格 + 绘图) ---
@@ -289,22 +324,29 @@ if not st.session_state.features.empty:
     # --- 3. 绘制股价与超额收益 ---
     if has_stock:
         stock_df = st.session_state.stock_data
-        
+
         # (1) 累计超额收益 -> 挂载到右轴1 (y2)
         if has_excess:
-            fig.add_trace(
-                go.Scatter(
-                    x=stock_df.index,
-                    y=stock_df[target_col], 
-                    name="累计超额收益 (右轴1)",
-                    mode='lines',
-                    line=dict(color='#ff7f0e', width=2),
-                    fillcolor='rgba(255, 127, 14, 0.1)'
-                ),
-                secondary_y=True
-            )
+            # 与特征数据索引对齐，并处理缺失值
+            common_index = df_res.index.intersection(stock_df.index)
+            if len(common_index) > 0:
+                excess_series = stock_df.loc[common_index, target_col]
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=common_index,
+                        y=excess_series,
+                        name="累计超额收益 (右轴1)",
+                        mode='lines',
+                        line=dict(color='#ff7f0e', width=2),
+                        connectgaps=True  # 连接缺失值之间的点
+                    ),
+                    secondary_y=True
+                )
+            else:
+                st.warning("⚠️ 股价数据与特征数据的日期没有交集，无法显示超额收益")
     else:
-        st.warning("提示：在“数据”页面选择标的后，此处可叠加显示超额收益。")
+        st.warning('提示：在"数据"页面选择标的后，此处可叠加显示超额收益。')
 
     # --- 4. 布局设置 (三轴适配) ---
     # 如果启用了 y3，需要缩短 X 轴给右侧留空间
@@ -363,4 +405,87 @@ if not st.session_state.features.empty:
 
     st.plotly_chart(fig, use_container_width=True)
 else:
-    st.info("请在右侧设置参数后，点击“生成/更新特征”按钮以查看结果。")
+    st.info('请在右侧设置参数后，点击"📊 生成特征"按钮以查看结果。')
+
+# --- 特征池管理区域 ---
+st.divider()
+st.header("🗂️ 特征池管理", divider="rainbow")
+
+if not st.session_state.feature_pool.empty:
+    pool_df = st.session_state.feature_pool
+
+    # 统计信息
+    col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
+    col_stat1.metric("📊 特征数量", len(pool_df.columns))
+    col_stat2.metric("📅 数据行数", len(pool_df))
+    col_stat3.metric("📆 起始日期", pool_df.index.min().strftime('%Y-%m-%d') if not pool_df.empty else 'N/A')
+    col_stat4.metric("📆 结束日期", pool_df.index.max().strftime('%Y-%m-%d') if not pool_df.empty else 'N/A')
+
+    # 操作按钮
+    col_op1, col_op2, col_op3 = st.columns([1, 1, 4])
+
+    with col_op1:
+        if st.button("🗑️ 清空特征池", type="secondary", use_container_width=True):
+            st.session_state.feature_pool = pd.DataFrame()
+            st.rerun()
+
+    with col_op2:
+        # 下载按钮
+        csv = pool_df.to_csv(index=True)
+        st.download_button(
+            label="📥 下载CSV",
+            data=csv,
+            file_name=f"feature_pool_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+
+    # 特征选择和删除
+    with st.expander("🔧 管理特征列", expanded=False):
+        st.caption("选择要删除的特征（可多选）")
+
+        # 按特征来源分组显示
+        feature_groups = {}
+        for col in pool_df.columns:
+            # 所有特征都应该有前缀格式：特征名_列名
+            if '_' in col:
+                group = col.split('_')[0]
+            else:
+                group = '其他'
+
+            if group not in feature_groups:
+                feature_groups[group] = []
+            feature_groups[group].append(col)
+
+        # 显示分组
+        cols_to_delete = []
+        for group_name, cols in feature_groups.items():
+            with st.expander(f"📁 {group_name} ({len(cols)})", expanded=True):
+                group_cols = st.columns(3)
+                for i, col in enumerate(cols):
+                    if group_cols[i % 3].checkbox(col, key=f"delete_{col}"):
+                        cols_to_delete.append(col)
+
+        if cols_to_delete:
+            if st.button(f"🗑️ 删除选中的 {len(cols_to_delete)} 个特征", type="secondary"):
+                st.session_state.feature_pool.drop(columns=cols_to_delete, inplace=True)
+                st.success(f"✅ 已删除 {len(cols_to_delete)} 个特征")
+                st.rerun()
+
+    # 数据预览
+    with st.expander("📋 查看特征池数据", expanded=True):
+        st.dataframe(
+            pool_df,
+            use_container_width=True,
+            height=400
+        )
+
+        # 数据统计
+        st.caption("数据统计信息")
+        st.dataframe(
+            pool_df.describe(),
+            use_container_width=True
+        )
+
+else:
+    st.info('💡 特征池为空，请先生成特征并点击"➕ 添加到特征池"按钮')
