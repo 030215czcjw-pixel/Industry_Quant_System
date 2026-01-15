@@ -52,4 +52,4 @@ watchdog==6.0.0
 kaleido==0.2.1
 anthropic==0.40.0
 openai==1.58.1
-streamlit-code-editor==0.1.27
+streamlit-code-editor==0.1.22
