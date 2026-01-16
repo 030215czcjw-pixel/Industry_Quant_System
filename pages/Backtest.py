@@ -79,11 +79,14 @@ class BayesianStrategyBacktester:
         # 注意：这里shift是负数，表示读取未来的数据作为当前的标签
         self.df['持有期超额收益率'] = self.df['超额净值'].shift(-holding_period) / self.df['超额净值'] - 1
 
-    def run_strategy(self, feature_cols, strategy_expression, position_strategy):
+    def run_strategy(self, feature_cols, strategy_expression, position_strategy, empty_position_expression="0", empty_position_mode="硬清仓"):
         """
         执行贝叶斯分析和信号生成
         :param feature_cols: list, 参与计算的特征列名
         :param strategy_expression: str, 策略触发条件的字符串表达式 (例如: "df['RSI'] > 70")
+        :param position_strategy: str, 仓位策略
+        :param empty_position_expression: str, 空仓信号表达式，默认为"0"（不触发空仓）
+        :param empty_position_mode: str, 空仓模式，可选："硬清仓"、"半仓止损"、"三分之一仓"、"渐进式减仓"
         :return: DataFrame, 包含完整分析结果
         """
         # 使用副本以免污染原始数据
@@ -135,6 +138,37 @@ class BayesianStrategyBacktester:
             st.error(f"❌ 策略表达式执行错误: {e}")
             st.stop()
 
+        # 3.5 执行空仓信号表达式
+        try:
+            # 准备执行环境
+            local_context = {
+                'df': df,
+                'pd': pd,
+                'np': np
+            }
+
+            # 执行空仓信号表达式并获取返回值
+            empty_result = execute_and_return(empty_position_expression, local_context)
+
+            # 检查执行结果
+            if isinstance(empty_result, str) and empty_result.startswith("Error"):
+                st.error(f"❌ 空仓信号执行错误: {empty_result}")
+                st.stop()
+            elif empty_result is not None:
+                # 确保结果是可转换为布尔值的数组或系列
+                try:
+                    boolean_result = np.asarray(empty_result).astype(bool)
+                    df['空仓信号'] = np.where(boolean_result, 1, 0).astype(int)
+                except Exception as e:
+                    st.error(f"❌ 无法将空仓信号返回值转换为信号条件: {e}")
+                    st.stop()
+            else:
+                # 如果返回None，默认为0（不触发空仓）
+                df['空仓信号'] = 0
+        except Exception as e:
+            st.error(f"❌ 空仓信号表达式执行错误: {e}")
+            st.stop()
+
         # 4. 计算条件概率 P(C|W) 和 P(C|not W)
         df['W_and_C'] = ((df['胜率触发'] == 1) & (df['信号触发'] == 1)).astype(int)
         df['notW_and_C'] = ((df['胜率触发'] == 0) & (df['信号触发'] == 1)).astype(int)
@@ -165,17 +199,127 @@ class BayesianStrategyBacktester:
         )
 
         # 7. 计算策略净值
-
         # 根据不同的仓位策略计算仓位
         if position_strategy == "原始策略逐步加仓":
             # 原始策略逐步加仓：根据概率变化和历史表现动态调整
             df['仓位'] = np.where(
-                df['买入信号'] == 1, 
-                df['信号触发'].shift(1).rolling(self.holding_period).sum() / self.holding_period, 
+                df['买入信号'] == 1,
+                df['信号触发'].shift(1).rolling(self.holding_period).sum() / self.holding_period,
                 0
             )
+        elif position_strategy == "先快后慢加仓":
+            # 先快后慢加仓：改进版，更及时响应信号
+            # 创建一个仓位累积计数器
+            df['仓位'] = np.where(
+                df['买入信号'] == 1,
+                0.3 + 0.7 * np.sqrt(df['信号触发'].shift(1).rolling(self.holding_period).sum() / self.holding_period),
+                0
+            )
+        elif position_strategy == "正金字塔建仓":
+            # 正金字塔建仓：底部仓位最重，越涨买得越少
+            # 核心思想：在低位时重仓，随着价格上涨逐步减仓，降低风险
+
+            # 计算持有期内的超额净值涨幅（相对于持有期前的最低点）
+            df['持有期内最低净值'] = df['超额净值'].shift(1).rolling(self.holding_period).min()
+            df['相对底部涨幅'] = (df['超额净值'].shift(1) - df['持有期内最低净值']) / df['持有期内最低净值'].replace(0, np.nan)
+
+            # 初始化仓位为0
+            df['仓位'] = 0.0
+
+            # 只在买入信号触发时计算仓位
+            buy_signal_mask = df['买入信号'] == 1
+
+            # 正金字塔逻辑：涨幅越大，仓位越小
+            # 使用向量化操作提高性能
+            relative_rise = df.loc[buy_signal_mask, '相对底部涨幅'].fillna(0)
+
+            # 分段仓位分配：
+            # 涨幅 0-5%：80%仓位（底部重仓）
+            # 涨幅 5-10%：60%仓位
+            # 涨幅 10-15%：40%仓位
+            # 涨幅 >15%：20%仓位
+            df.loc[buy_signal_mask, '仓位'] = np.select(
+                [
+                    relative_rise < 0.05,
+                    relative_rise < 0.10,
+                    relative_rise < 0.15,
+                    relative_rise >= 0.15
+                ],
+                [0.8, 0.6, 0.4, 0.2],
+                default=0.8  # 默认使用最大仓位
+            )
+
+        elif position_strategy == "时间加权加仓":
+            # 时间加权加仓：越近的日期产生的信号权重越大
+            # 核心思想：最近的信号更重要，使用指数加权来计算仓位
+
+            # 初始化仓位为0
+            df['仓位'] = 0.0
+
+            # 只在买入信号触发时计算仓位
+            buy_signal_mask = df['买入信号'] == 1
+
+            # 使用指数加权移动平均(EWM)计算信号的加权和
+            # span参数控制衰减速度，span越小，越重视近期信号
+            span = max(self.holding_period // 2, 3)  # 至少为3，最大为持有期的一半
+
+            # 计算信号的指数加权移动平均
+            df['信号加权'] = df['信号触发'].shift(1).ewm(span=span, adjust=False).mean()
+
+            # 在买入信号触发时，根据加权信号计算仓位
+            # 加权信号范围是0-1，可以直接用作仓位比例
+            df.loc[buy_signal_mask, '仓位'] = df.loc[buy_signal_mask, '信号加权']
+
+            # 设置最小仓位阈值，避免仓位过小
+            df.loc[buy_signal_mask & (df['仓位'] < 0.2), '仓位'] = 0.2
+
         # 确保仓位在0-1之间
-        #df['仓位'] = df['仓位'].clip(0, 1)     
+        df['仓位'] = df['仓位'].clip(0, 1)
+
+        # 应用空仓信号：根据不同的空仓模式处理仓位
+        if empty_position_mode == "硬清仓":
+            # 模式1：硬清仓 - 触发即归零
+            df['仓位'] = np.where(df['空仓信号'] == 1, 0, df['仓位'])
+
+        elif empty_position_mode == "半仓止损":
+            # 模式2：半仓止损 - 触发时减至原仓位的50%
+            df['仓位'] = np.where(df['空仓信号'] == 1, df['仓位'] * 0.5, df['仓位'])
+
+        elif empty_position_mode == "三分之一仓":
+            # 模式3：三分之一仓 - 触发时减至原仓位的33%
+            df['仓位'] = np.where(df['空仓信号'] == 1, df['仓位'] * 0.33, df['仓位'])
+
+        elif empty_position_mode == "渐进式减仓":
+            # 模式4：渐进式减仓 - 连续触发时逐步减仓
+            # 创建一个累计触发计数器
+            df['空仓累计'] = (df['空仓信号'] == 1).astype(int)
+
+            # 使用shift和cumsum创建连续触发计数
+            # 当空仓信号为0时重置计数
+            df['空仓连续触发'] = 0
+            current_count = 0
+            for idx in df.index:
+                if df.loc[idx, '空仓信号'] == 1:
+                    current_count += 1
+                else:
+                    current_count = 0
+                df.loc[idx, '空仓连续触发'] = current_count
+
+            # 根据连续触发次数递减仓位
+            # 第1次：减至80%，第2次：减至60%，第3次：减至40%，第4次：减至20%，第5次及以上：清仓
+            df['减仓系数'] = np.select(
+                [
+                    df['空仓连续触发'] == 0,
+                    df['空仓连续触发'] == 1,
+                    df['空仓连续触发'] == 2,
+                    df['空仓连续触发'] == 3,
+                    df['空仓连续触发'] == 4,
+                    df['空仓连续触发'] >= 5
+                ],
+                [1.0, 0.8, 0.6, 0.4, 0.2, 0.0],
+                default=1.0
+            )
+            df['仓位'] = df['仓位'] * df['减仓系数']     
         
         df['仓位净值'] = (1 + (df['仓位'].shift(1) * df['超额收益率'].fillna(0))).cumprod()
         df['先验仓位净值'] = (1 + (df['P(W)'].shift(1) * df['超额收益率'].fillna(0))).cumprod()
@@ -248,15 +392,15 @@ with top_left_cell:
             "meta": "特征",               # 类型标签
             "score": 1000,               # 排序优先级
         })
-    
+
     # 使用CodeEditor组件，配置行号显示和自动补全
     editor_result = code_editor(
         s_input_default,
         lang="python",
         completions=autocomplete_options,
         options={
-            "minLines": 10,
-            "maxLines": 30,
+            "minLines": 8,
+            "maxLines": 25,
             "showLineNumbers": True,  # 显示行号
             "highlightActiveLine": True,  # 高亮当前行
             "enableBasicAutocompletion": True,
@@ -312,7 +456,7 @@ with top_left_cell:
         response_mode=["blur", "submit"],  # 失去焦点或提交时更新
         key="strategy_code_editor"  # 添加唯一key
     )
-    
+
     # 获取编辑后的代码
     if editor_result is not None and "text" in editor_result and editor_result["text"].strip():
         # 如果编辑器返回非空文本，使用它
@@ -353,6 +497,141 @@ with top_left_cell:
         """)
 
     st.divider()
+
+    # 空仓信号表达式输入区域
+    st.markdown("### 空仓信号表达式")
+
+    if st.session_state.get('empty_position_expression') is not None:
+        empty_input_default = st.session_state.empty_position_expression
+    else:
+        empty_input_default = "0"
+
+    # 使用CodeEditor组件，配置行号显示和自动补全
+    empty_editor_result = code_editor(
+        empty_input_default,
+        lang="python",
+        completions=autocomplete_options,
+        options={
+            "minLines": 5,
+            "maxLines": 15,
+            "showLineNumbers": True,
+            "highlightActiveLine": True,
+            "enableBasicAutocompletion": True,
+            "enableLiveAutocompletion": True,
+            "enableSnippets": True,
+            "fontSize": 14,
+            "fontFamily": "Monaco, Menlo, 'Ubuntu Mono', Consolas, monospace",
+            "tooltipFollowsMouse": True,
+            "showPrintMargin": False,
+        },
+        component_props={
+            "css": """
+                /* 自动补全弹出框样式 */
+                .ace_autocomplete {
+                    width: 1000px !important;
+                    max-height: 500px !important;
+                    font-size: 14px !important;
+                    line-height: 1.6 !important;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+                    border: 1px solid #d0d0d0 !important;
+                    border-radius: 4px !important;
+                }
+
+                /* 自动补全项样式 */
+                .ace_autocomplete .ace_line {
+                    padding: 4px 8px !important;
+                    white-space: nowrap !important;
+                    overflow: visible !important;
+                    text-overflow: clip !important;
+                }
+
+                /* 高亮匹配文本 */
+                .ace_autocomplete .ace_completion-highlight {
+                    color: #0066cc !important;
+                    font-weight: bold !important;
+                }
+
+                /* 选中项的背景色 */
+                .ace_autocomplete .ace_line-hover,
+                .ace_autocomplete .ace_line.ace_selected {
+                    background-color: #e8f4ff !important;
+                }
+
+                /* meta 标签样式 */
+                .ace_autocomplete .ace_rightAlignedText {
+                    color: #999 !important;
+                    font-style: italic !important;
+                    margin-left: 20px !important;
+                }
+            """
+        },
+        theme="vs-light",
+        response_mode=["blur", "submit"],
+        key="empty_position_code_editor"  # 添加唯一key
+    )
+
+    # 获取编辑后的代码
+    if empty_editor_result is not None and "text" in empty_editor_result and empty_editor_result["text"].strip():
+        empty_input = empty_editor_result["text"]
+        st.session_state.empty_position_expression = empty_input
+    else:
+        empty_input = st.session_state.get('empty_position_expression', empty_input_default)
+        if 'empty_position_expression' not in st.session_state:
+            st.session_state.empty_position_expression = empty_input_default
+
+    # 空仓信号使用说明
+    with st.expander("💡 空仓信号编写指南", expanded=False):
+        st.markdown("""
+        **功能说明：**
+        - 空仓信号用于触发减仓或清仓操作
+        - 默认值为 `0`，表示不触发空仓
+        - 可以在下方选择不同的空仓模式
+
+        **基本语法：**
+        - 最后一行必须是返回布尔值的表达式
+        - 返回True时触发空仓，False时不触发
+
+        **示例：**
+        ```python
+        # 不触发空仓（默认）
+        0
+
+        # 当超额净值下跌超过20%时清仓
+        df['超额净值'] < df['超额净值'].rolling(20).max() * 0.8
+
+        # 当先验概率低于30%时清仓
+        df['P(W)'] < 0.3
+
+        # 组合条件
+        (df['超额净值'] < 0.9) & (df['P(W)'] < 0.4)
+        ```
+
+        **可用变量：**
+        - `df`: 包含所有特征和价格数据的DataFrame
+        - `pd`: pandas 库
+        - `np`: numpy 库
+        """)
+
+    # 空仓模式选择
+    st.markdown("##### 空仓模式")
+    empty_position_mode = st.selectbox(
+        "选择空仓触发后的处理方式",
+        ["硬清仓", "半仓止损", "三分之一仓", "渐进式减仓"],
+        index=st.session_state.get('empty_position_mode_index', 0),
+        help="硬清仓：触发即归零；半仓止损：减至50%；三分之一仓：减至33%；渐进式减仓：连续触发时逐步减仓（80%→60%→40%→20%→0%）"
+    )
+    st.session_state.empty_position_mode = empty_position_mode
+
+    # 根据模式显示说明
+    mode_descriptions = {
+        "硬清仓": "⚠️ **风控最强**：触发时立即清仓，仓位归零",
+        "半仓止损": "🛡️ **平衡模式**：触发时保留50%仓位，既控制风险又保留机会",
+        "三分之一仓": "📊 **保守减仓**：触发时保留33%仓位，留有一定底仓",
+        "渐进式减仓": "📉 **渐进退出**：连续触发时逐步减仓（第1次80%→第2次60%→第3次40%→第4次20%→第5次0%）"
+    }
+    st.info(mode_descriptions[empty_position_mode])
+
+    st.divider()
    
 with top_right_cell:    
     st.subheader("回测参数", divider="gray")
@@ -388,9 +667,9 @@ with top_right_cell:
     # 仓位策略选择
     position_strategy = st.selectbox(
         "仓位策略",
-        ["原始策略逐步加仓", "待定（别选）"],
-        index=st.session_state.get('position_strategy_index', 1),
-        help="选择不同的仓位计算策略"
+        ["原始策略逐步加仓", "先快后慢加仓", "正金字塔建仓", "时间加权加仓"],
+        index=st.session_state.get('position_strategy_index', 0),
+        help="选择不同的仓位计算策略：\n• 原始策略：根据信号触发次数逐步加仓\n• 先快后慢：使用平方根函数先快速加仓后逐渐放缓\n• 正金字塔：底部仓位最重，越涨买得越少\n• 时间加权：越近的信号权重越大，使用指数加权"
     )
     st.session_state.position_strategy = position_strategy
 
@@ -430,7 +709,9 @@ with top_right_cell:
                 df_res = tester.run_strategy(
                         feature_cols=feature_cols,
                         strategy_expression=st.session_state.strategy_expression,
-                        position_strategy=tester.position_strategy
+                        position_strategy=tester.position_strategy,
+                        empty_position_expression=st.session_state.get('empty_position_expression', '0'),
+                        empty_position_mode=st.session_state.get('empty_position_mode', '硬清仓')
                     )
 
                 # 保存回测结果到 session_state 供 AI 助手使用
@@ -525,6 +806,18 @@ if 'df_res' in locals():
         fillcolor='rgba(255, 165, 0, 0.15)',
         hovertemplate='日期: %{x}<br>信号: %{y}<extra></extra>'
     ), 2, 1)
+
+    # 空仓信号背景（如果有触发）
+    if df_res['空仓信号'].sum() > 0:
+        fig.add_trace(go.Scatter(
+            x=df_res.index,
+            y=df_res['空仓信号'],
+            name='空仓信号',
+            fill='tozeroy',
+            line=dict(width=0),
+            fillcolor='rgba(255, 0, 0, 0.2)',
+            hovertemplate='日期: %{x}<br>空仓: %{y}<extra></extra>'
+        ), 2, 1)
 
     # 图4: 实时仓位变化
     fig.add_trace(go.Scatter(

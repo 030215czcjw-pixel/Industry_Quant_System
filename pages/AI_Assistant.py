@@ -399,6 +399,9 @@ with col_main:
 - 买入信号次数：{context_data['买入信号次数']}
 - 信号触发次数：{context_data['信号触发次数']}
 
+回测代码：
+- 仓位策略：{st.session_state.get('strategy_expression', '未知')}
+
 === 完整回测数据 ===
 以下是详细的回测数据，你可以基于这些数据进行深入分析：
 
