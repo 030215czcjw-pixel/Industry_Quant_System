@@ -519,6 +519,8 @@ with col_main:
                         "role": "assistant",
                         "content": full_response
                     })
+                    # 重新运行脚本，确保下载按钮和其他组件更新
+                    st.rerun()
 
                 except Exception as e:
                     st.error(f"❌ API 调用失败: {str(e)}")

@@ -46,13 +46,14 @@ def execute_and_return(code, context):
 
 # 贝叶斯策略回测器
 class BayesianStrategyBacktester:           
-    def __init__(self, stock_data, baseline_data, feature_data, profit_setted, observation_periods, holding_period):
+    def __init__(self, stock_data, baseline_data, feature_data, profit_setted, observation_periods, holding_period, position_strategy):
         """
         初始化回测器，执行数据对齐和基础收益率计算。
         """
         self.profit_setted = profit_setted
         self.observation_periods = observation_periods
         self.holding_period = holding_period
+        self.position_strategy = position_strategy
         
         # 1. 数据对齐 (Intersection)
         common_dates = stock_data.index.intersection(baseline_data.index).intersection(feature_data.index).sort_values()
@@ -78,7 +79,7 @@ class BayesianStrategyBacktester:
         # 注意：这里shift是负数，表示读取未来的数据作为当前的标签
         self.df['持有期超额收益率'] = self.df['超额净值'].shift(-holding_period) / self.df['超额净值'] - 1
 
-    def run_strategy(self, feature_cols, strategy_expression):
+    def run_strategy(self, feature_cols, strategy_expression, position_strategy):
         """
         执行贝叶斯分析和信号生成
         :param feature_cols: list, 参与计算的特征列名
@@ -103,7 +104,6 @@ class BayesianStrategyBacktester:
         # shift(holding_period) 是为了防止未来函数，确保只用过去的数据计算当前的先验
         df['P(W)'] = df['胜率触发'].rolling(window=self.observation_periods).mean().shift(self.holding_period + 1)
     
-
         # 3. 执行策略表达式，计算信号 C
         try:
             # 准备执行环境，确保变量作用域正确
@@ -165,12 +165,17 @@ class BayesianStrategyBacktester:
         )
 
         # 7. 计算策略净值
-        # 仓位逻辑：如果买入，持有 holding_period 天 (这里简化为均摊)
-        df['仓位'] = np.where(
-            df['买入信号'] == 1, 
-            1, 
-            0
-        )
+
+        # 根据不同的仓位策略计算仓位
+        if position_strategy == "原始策略逐步加仓":
+            # 原始策略逐步加仓：根据概率变化和历史表现动态调整
+            df['仓位'] = np.where(
+                df['买入信号'] == 1, 
+                df['信号触发'].shift(1).rolling(self.holding_period).sum() / self.holding_period, 
+                0
+            )
+        # 确保仓位在0-1之间
+        #df['仓位'] = df['仓位'].clip(0, 1)     
         
         df['仓位净值'] = (1 + (df['仓位'].shift(1) * df['超额收益率'].fillna(0))).cumprod()
         df['先验仓位净值'] = (1 + (df['P(W)'].shift(1) * df['超额收益率'].fillna(0))).cumprod()
@@ -352,11 +357,12 @@ with top_left_cell:
 with top_right_cell:    
     st.subheader("回测参数", divider="gray")
 
+    # 从session_state获取保存的值，如果没有则使用默认值
     hp = st.slider(
         "持有期",
         min_value=1,
         max_value=365,
-        value=5,
+        value=st.session_state.get('holding_period', 5),
         help="持有期越长，交易频率越低"
     )
     st.session_state.holding_period = hp
@@ -365,19 +371,28 @@ with top_right_cell:
         "观察期",
         min_value=1,
         max_value=365,
-        value=60,
+        value=st.session_state.get('observation_period', 60),
         help="计算先验概率的历史窗口长度"
     )
     st.session_state.observation_period = op
 
     profit_target = st.number_input(
         "目标超额收益",
-        value=0.0,
+        value=st.session_state.get('profit_target', 0.0),
         step=0.01,
         format="%.2f",
         help="定义「胜」的标准，超过此收益率视为成功"
     )
     st.session_state.profit_target = profit_target
+    
+    # 仓位策略选择
+    position_strategy = st.selectbox(
+        "仓位策略",
+        ["原始策略逐步加仓", "待定（别选）"],
+        index=st.session_state.get('position_strategy_index', 1),
+        help="选择不同的仓位计算策略"
+    )
+    st.session_state.position_strategy = position_strategy
 
     with st.expander("可用特征列", expanded=False):
         if columns:
@@ -408,12 +423,14 @@ with top_right_cell:
                         feature_data=feature_data,
                         profit_setted=st.session_state.profit_target,
                         observation_periods=st.session_state.observation_period,
-                        holding_period=st.session_state.holding_period
+                        holding_period=st.session_state.holding_period,
+                        position_strategy=st.session_state.position_strategy
                     )
 
                 df_res = tester.run_strategy(
                         feature_cols=feature_cols,
-                        strategy_expression=st.session_state.strategy_expression
+                        strategy_expression=st.session_state.strategy_expression,
+                        position_strategy=tester.position_strategy
                     )
 
                 # 保存回测结果到 session_state 供 AI 助手使用
@@ -444,9 +461,7 @@ if 'df_res' in locals():
     excess_gain = final_nav - prior_nav
     c3.metric(
         "超额增益",
-        f"{excess_gain:.3f}",
-        f"{(excess_gain/prior_nav if prior_nav != 0 else 0):.2%}",
-        delta_color="normal"
+        f"{excess_gain:.2%}"
     )
 
     # Plotly 图表

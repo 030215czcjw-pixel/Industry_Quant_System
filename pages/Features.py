@@ -473,7 +473,7 @@ if not st.session_state.feature_pool.empty:
                 st.rerun()
 
     # 数据预览
-    with st.expander("📋 查看特征池数据", expanded=True):
+    with st.expander("📋 查看特征池数据", expanded=False):
         st.dataframe(
             pool_df,
             use_container_width=True,
