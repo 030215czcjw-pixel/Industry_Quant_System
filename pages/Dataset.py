@@ -8,8 +8,8 @@ st.set_page_config(
             layout="wide",                 # 布局模式 ("centered" 或 "wide")
         )
 
-stocks = ["中国神华", "秦皇岛5500K动力末煤平仓价", "招商轮船", "南方航空"]
-bases = ["沪深300", "零基准"]
+stocks = ["中国神华", "秦皇岛5500K动力末煤平仓价", "招商轮船", "南方航空", "太平洋航运"]
+bases = ["沪深300", "恒生综指", "零基准"]
 
 cols = st.columns([1, 1])
 top_left_cell = cols[0].container(
