@@ -223,10 +223,15 @@ with top_right2_cell:
                         yoy_list.append(n_yoy_val)
 
                     # 计算特征
-                    st.session_state.features = generate_features(
+                    features = generate_features(
                         raw_df, n_lag, n_MA, n_D, yoy_list, use_kalman,
                         transform_method=transform_method
                     )
+                    # 对所有特征列应用shift(1)以防止未来数据
+                    features_shifted = features.copy()
+                    for col in features_shifted.columns:
+                        features_shifted[col] = features_shifted[col].shift(1)
+                    st.session_state.features = features_shifted
                     st.success("✅ 特征已生成，请查看下方预览")
                 else:
                     st.error("所选Sheet数据为空或无法解析日期。")

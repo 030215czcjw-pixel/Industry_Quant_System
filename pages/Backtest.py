@@ -95,7 +95,7 @@ class BayesianStrategyBacktester:
         # 合并指定的特征列
         for col in feature_cols:
             if col in self.feature_data_aligned.columns:
-                df[col] = self.feature_data_aligned[col].shift(1)
+                df[col] = self.feature_data_aligned[col]
             else:
                 print(f"警告: 特征 {col} 不存在于特征数据中")
 
