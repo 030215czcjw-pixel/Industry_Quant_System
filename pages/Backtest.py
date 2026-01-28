@@ -641,7 +641,7 @@ with top_right_cell:
         "持有期",
         min_value=1,
         max_value=365,
-        value=st.session_state.get('holding_period', 5),
+        value=st.session_state.get('holding_period', 6),
         help="持有期越长，交易频率越低"
     )
     st.session_state.holding_period = hp
@@ -650,7 +650,7 @@ with top_right_cell:
         "观察期",
         min_value=1,
         max_value=365,
-        value=st.session_state.get('observation_period', 60),
+        value=st.session_state.get('observation_period', 30),
         help="计算先验概率的历史窗口长度"
     )
     st.session_state.observation_period = op
