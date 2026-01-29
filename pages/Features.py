@@ -6,9 +6,10 @@ from plotly.subplots import make_subplots
 from filterpy.kalman import KalmanFilter
 
 # --- 配置与常量 ---
-Industry_list = ["煤炭", "交运", "干散货", "游戏"]
+Industry_list = ["煤炭", "焦煤", "交运", "干散货", "游戏"]
 SHEET_LIST = {
     "交运": "1VVTAG1ixDe50ysjMZEAAZyvYkUbiHBvolh0oaYn8Mxw", 
+    "焦煤": "1_ye6vJegv8KMzDQLjaBDlf-GDkD7s9dfr3p2Yyr0dNw",
     "煤炭": "1P3446_9mBi-7qrAMi78F1gHDHGIOCjw-",
     "干散货": "1_5szzrppATh1SFSk3MtxmkSo6XKUsV6x8WcJ6kOUsNc",
     "游戏": "1jV7SLw7fOrKmH8SkGYOMtYZL-4ig1E-DxK77jb32N5Y"

@@ -40,7 +40,8 @@ with top_left_cell:
         default_stock = None
     stock_chosen = st.selectbox(
         "选择标的",
-        options=stocks
+        options=stocks,
+        index=stocks.index(default_stock) if default_stock in stocks else 0
     )
     st.session_state.stock_chosen = stock_chosen
     if stock_chosen:
@@ -55,10 +56,14 @@ with top_left_cell:
         st.stop()
 
 with top_right_cell:
+    if st.session_state.get('base_chosen') is not None:
+        default_base = st.session_state['base_chosen']
+    else:
+        default_base = bases[0]
     base_chosen = st.pills(
         "选择基准",
         options=bases,
-        default=bases[0],
+        default=default_base,
         selection_mode="single"
     )
     st.session_state.base_chosen = base_chosen
