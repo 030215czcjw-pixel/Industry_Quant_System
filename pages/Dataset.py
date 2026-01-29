@@ -8,7 +8,21 @@ st.set_page_config(
             layout="wide",                 # 布局模式 ("centered" 或 "wide")
         )
 
-stocks = ["中国神华", "秦皇岛5500K动力末煤平仓价", "动力煤（中信）", "招商轮船", "南方航空", "太平洋航运", "网易-S", "网易（月）", "哔哩哔哩", "传媒指数（月）"]
+stocks = ["中国神华", 
+          "秦皇岛5500K动力末煤平仓价", 
+          "动力煤（中信）", 
+          "京唐港 山西产 主焦煤 库提价", 
+          "甘其毛都 场地价 焦精煤 蒙古产", 
+          "DCE焦煤", 
+          "炼焦煤（中信）", 
+          "招商轮船", 
+          "南方航空", 
+          "太平洋航运", 
+          "网易-S", 
+          "网易（月）", 
+          "哔哩哔哩", 
+          "传媒指数（月）"
+        ]
 bases = ["沪深300", "恒生综指", "恒生综指（月）", "零基准"]
 
 cols = st.columns([1, 1])
@@ -24,11 +38,9 @@ with top_left_cell:
         default_stock = st.session_state['stock_chosen']
     else:
         default_stock = None
-    stock_chosen = st.pills(
+    stock_chosen = st.selectbox(
         "选择标的",
-        options=stocks,
-        default=default_stock,
-        selection_mode="single"
+        options=stocks
     )
     st.session_state.stock_chosen = stock_chosen
     if stock_chosen:
