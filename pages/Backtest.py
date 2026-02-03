@@ -726,8 +726,31 @@ if 'df_res' in locals():
     # --- 绩效指标 ---
     final_nav = df_res['仓位净值'].iloc[-1]
     prior_nav = df_res['先验仓位净值'].iloc[-1]
+    
+    # 计算最大回撤
+    def calculate_max_drawdown(nav_series):
+        cumulative_max = nav_series.cummax()
+        drawdown = (nav_series - cumulative_max) / cumulative_max
+        max_drawdown = drawdown.min()
+        return max_drawdown
+    
+    max_drawdown = calculate_max_drawdown(df_res['仓位净值'])
+    
+    # 计算夏普比率 (假设无风险利率为0)
+    def calculate_sharpe_ratio(nav_series, risk_free_rate=0):
+        # 计算日收益率
+        daily_returns = nav_series.pct_change().dropna()
+        # 计算年化收益率
+        annualized_return = daily_returns.mean() * 252
+        # 计算年化波动率
+        annualized_volatility = daily_returns.std() * np.sqrt(252)
+        # 计算夏普比率
+        sharpe_ratio = (annualized_return - risk_free_rate) / annualized_volatility
+        return sharpe_ratio
+    
+    sharpe_ratio = calculate_sharpe_ratio(df_res['仓位净值'])
 
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric(
         "策略净值",
         f"{final_nav:.3f}",
@@ -744,6 +767,14 @@ if 'df_res' in locals():
     c3.metric(
         "超额增益",
         f"{excess_gain:.2%}"
+    )
+    c4.metric(
+        "最大回撤",
+        f"{max_drawdown:.2%}"
+    )
+    c5.metric(
+        "夏普比率",
+        f"{sharpe_ratio:.2f}"
     )
 
     # Plotly 图表
