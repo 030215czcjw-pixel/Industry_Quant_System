@@ -325,7 +325,10 @@ class BayesianStrategyBacktester:
             df['仓位'] = df['仓位'] * df['减仓系数']     
         
         df['仓位净值'] = (1 + (df['仓位'].shift(1) * df['超额收益率'].fillna(0))).cumprod()
-        df['先验仓位净值'] = (1 + (df['P(W)'].shift(1) * df['超额收益率'].fillna(0))).cumprod()
+        if st.session_state.use_bayesian:
+            df['先验仓位净值'] = (1 + (df['P(W)'].shift(1) * df['超额收益率'].fillna(0))).cumprod()
+        else:
+            df['先验仓位净值'] = (1 + df['超额收益率'].fillna(0)).cumprod()
 
         st.success("回测完成！")
         return df
