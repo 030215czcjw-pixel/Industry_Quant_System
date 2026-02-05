@@ -47,6 +47,8 @@ with top_left_cell:
     if stock_chosen:
         try:
             stock_data = pd.read_excel('data/stock_data.xlsx', sheet_name=stock_chosen, index_col='日期', parse_dates=True)
+            # Drop duplicate indexes, keep last occurrence
+            stock_data = stock_data.loc[~stock_data.index.duplicated(keep='last')]
             st.session_state.stock_data = stock_data
         except Exception as e:
             st.error(f"无法加载数据: {e}")
@@ -82,6 +84,8 @@ with top_right_cell:
     else:
         try:
             base_data = pd.read_excel('data/stock_data.xlsx', sheet_name=base_chosen, index_col='date', parse_dates=True)
+            # Drop duplicate indexes, keep last occurrence
+            base_data = base_data.loc[~base_data.index.duplicated(keep='last')]
             st.session_state.base_data = base_data
         except Exception as e:
             st.error(f"无法加载数据: {e}")
@@ -102,8 +106,15 @@ if st.session_state.base_chosen == "零基准":
 else:
     # 正常基准下，计算相对于基准的超额收益率，再累乘生成超额净值
     st.session_state.base_data['收益率'] = st.session_state.base_data['close'].pct_change()
-    st.session_state.stock_data['超额收益率'] = (st.session_state.stock_data['收益率'].fillna(0) - 
-                                             st.session_state.base_data['收益率'].fillna(0))
+    
+    # 对齐索引后再计算超额收益率
+    stock_returns = st.session_state.stock_data['收益率'].fillna(0)
+    base_returns = st.session_state.base_data['收益率'].fillna(0)
+    
+    # 对齐到stock_data的索引
+    aligned_base_returns = base_returns.reindex(stock_returns.index, fill_value=0)
+    
+    st.session_state.stock_data['超额收益率'] = stock_returns - aligned_base_returns
     st.session_state.stock_data['累计超额收益'] = (1 + st.session_state.stock_data['超额收益率']).cumprod()
 
 with bottom_cell:
