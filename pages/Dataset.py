@@ -98,23 +98,33 @@ bottom_cell = cols[0].container(
 
 # 计算超额收益
 # 零基准存在计算精度问题
-st.session_state.stock_data['收益率'] = st.session_state.stock_data['收盘'].pct_change()
 if st.session_state.base_chosen == "零基准":
     # 直接使用原始序列进行归一化
+    st.session_state.stock_data['收益率'] = st.session_state.stock_data['收盘'].pct_change()
     st.session_state.stock_data['超额收益率'] = st.session_state.stock_data['收益率'].fillna(0)
     st.session_state.stock_data['累计超额收益'] = st.session_state.stock_data['收盘'] / st.session_state.stock_data['收盘'].iloc[0]
 else:
-    # 正常基准下，计算相对于基准的超额收益率，再累乘生成超额净值
+    # 正常基准下，先取日期交集再计算
+    # 1. 计算日期交集
+    common_dates = st.session_state.stock_data.index.intersection(st.session_state.base_data.index)
+    
+    # 2. 过滤到共同日期
+    filtered_stock_data = st.session_state.stock_data.loc[common_dates].copy()
+    filtered_base_data = st.session_state.base_data.loc[common_dates].copy()
+    
+    # 3. 更新会话状态中的数据为过滤后的数据
+    st.session_state.stock_data = filtered_stock_data
+    st.session_state.base_data = filtered_base_data
+    
+    # 4. 计算收益率
+    st.session_state.stock_data['收益率'] = st.session_state.stock_data['收盘'].pct_change()
     st.session_state.base_data['收益率'] = st.session_state.base_data['close'].pct_change()
     
-    # 对齐索引后再计算超额收益率
+    # 5. 计算超额收益率
     stock_returns = st.session_state.stock_data['收益率'].fillna(0)
     base_returns = st.session_state.base_data['收益率'].fillna(0)
     
-    # 对齐到stock_data的索引
-    aligned_base_returns = base_returns.reindex(stock_returns.index, fill_value=0)
-    
-    st.session_state.stock_data['超额收益率'] = stock_returns - aligned_base_returns
+    st.session_state.stock_data['超额收益率'] = stock_returns - base_returns
     st.session_state.stock_data['累计超额收益'] = (1 + st.session_state.stock_data['超额收益率']).cumprod()
 
 with bottom_cell:
