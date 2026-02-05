@@ -193,11 +193,13 @@ class BayesianStrategyBacktester:
         prob_condition = (df['P(W|C)'] > 0.5) | (df['P(W|C)'] > df['P(W|C)'].shift(1) * 0.9)
         improve_condition = df['P(W|C)'] >= df['P(W)']
         
-        df['买入信号'] = np.where(
-            improve_condition & (df['信号触发'] == 1) & prob_condition, 
-            1, 0
-        )
-        # df['买入信号'] = df['信号触发']
+        if st.session_state.use_bayesian:
+            df['买入信号'] = np.where(
+                improve_condition & (df['信号触发'] == 1) & prob_condition, 
+                1, 0
+            )
+        else:
+            df['买入信号'] = df['信号触发']
 
         # 7. 计算策略净值
         # 根据不同的仓位策略计算仓位
@@ -681,6 +683,13 @@ with top_right_cell:
                 cols_display[i % 1].write(f"• `{col}`")
         else:
             st.info("暂无特征列")
+
+    bayesian = st.checkbox(
+        "使用贝叶斯策略",
+        value=st.session_state.get('use_bayesian', True),
+        help="启用贝叶斯策略，根据先验概率和后验概率进行仓位调整"
+    )
+    st.session_state.use_bayesian = bayesian
 
     st.divider()
 

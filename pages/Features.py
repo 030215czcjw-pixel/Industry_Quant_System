@@ -121,9 +121,9 @@ st.set_page_config(page_title="特征工程", layout="wide")
 
 # --- 布局结构 ---
 cols = st.columns([0.5, 1, 2], vertical_alignment="top")
-top_left_cell = cols[0].container(border=True, height=400)
-top_right1_cell = cols[1].container(border=True, height=400)
-top_right2_cell = cols[2].container(border=True, height=400)
+top_left_cell = cols[0].container(border=True, height=500)
+top_right1_cell = cols[1].container(border=True, height=500)
+top_right2_cell = cols[2].container(border=True, height=500)
 
 # --- 初始化 Session State ---
 if 'xl_object' not in st.session_state:
@@ -178,7 +178,7 @@ with top_right2_cell:
     
     with c1:
         st.write("**1. 滤波**")
-        use_kalman = st.checkbox("卡尔曼滤波", value=True, help="对原始数据去噪")
+        use_kalman = st.checkbox("卡尔曼滤波", value=False, help="对原始数据去噪")
         
     with c2:
         st.write("**2. 同比环比差分**")
