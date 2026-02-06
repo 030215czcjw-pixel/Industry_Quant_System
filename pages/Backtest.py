@@ -191,7 +191,7 @@ class BayesianStrategyBacktester:
         # 6. 生成买入信号
         # 逻辑：后验概率 > 先验概率 且 信号触发 且 (绝对概率>0.5 或 概率动量上升)
         prob_condition = (df['P(W|C)'] > 0.5) | (df['P(W|C)'] > df['P(W|C)'].shift(1) * 0.9)
-        improve_condition = df['P(W|C)'] >= df['P(W)']
+        improve_condition = df['P(W|C)'] > df['P(W)']
         
         if st.session_state.use_bayesian:
             df['买入信号'] = np.where(
