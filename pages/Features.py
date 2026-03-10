@@ -84,7 +84,7 @@ def generate_features(data, n_lag, n_MA, n_D, n_yoy, use_kalman, transform_metho
             working_df[col_name] = base_series.pct_change(yoy)
             has_transform = True
     if not has_transform:
-        working_df['数值'] = base_series
+        working_df['原始数据'] = base_series
     
     if transform_method != "无":
         for col in working_df.columns:
@@ -97,7 +97,7 @@ def generate_features(data, n_lag, n_MA, n_D, n_yoy, use_kalman, transform_metho
     if n_MA > 0:
         for col in list(working_df.columns):
             working_df[f'{col}_MA{n_MA}'] = working_df[col].rolling(window=n_MA).mean()
-    return pd.concat([df, working_df], axis=1)
+    return pd.concat([working_df], axis=1)
 
 def load_and_clean_feature(xl_obj, sheet_name):
     try:
@@ -232,6 +232,7 @@ with top_right2_cell:
                     features_shifted = features.copy()
                     for col in features_shifted.columns:
                         features_shifted[col] = features_shifted[col].shift(1)
+                    features_shifted.dropna(inplace=True)
                     st.session_state.features = features_shifted
                     st.success("✅ 特征已生成，请查看下方预览")
                 else:

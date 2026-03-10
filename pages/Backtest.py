@@ -279,6 +279,9 @@ class BayesianStrategyBacktester:
         # 确保仓位在0-1之间
         df['仓位'] = df['仓位'].clip(0, 1)
 
+
+
+
         # 应用空仓信号：根据不同的空仓模式处理仓位
         if empty_position_mode == "硬清仓":
             # 模式1：硬清仓 - 触发即归零
@@ -324,11 +327,11 @@ class BayesianStrategyBacktester:
             )
             df['仓位'] = df['仓位'] * df['减仓系数']     
         
-        df['仓位净值'] = (1 + (df['仓位'].shift(1) * df['超额收益率'].fillna(0))).cumprod()
+        df['仓位净值'] = (1 + (df['仓位'].shift(1) * df['股价收益率'].fillna(0))).cumprod()
         if st.session_state.use_bayesian:
-            df['先验仓位净值'] = (1 + (df['P(W)'].shift(1) * df['超额收益率'].fillna(0))).cumprod()
+            df['先验仓位净值'] = (1 + (df['P(W)'].shift(1) * df['股价收益率'].fillna(0))).cumprod()
         else:
-            df['先验仓位净值'] = (1 + df['超额收益率'].fillna(0)).cumprod()
+            df['先验仓位净值'] = (1 + df['股价收益率'].fillna(0)).cumprod()
 
         st.success("回测完成！")
         return df
@@ -777,7 +780,7 @@ if 'df_res' in locals():
     )
     excess_gain = final_nav - prior_nav
     c3.metric(
-        "超额增益",
+        "超额收益",
         f"{excess_gain:.2%}"
     )
     c4.metric(
@@ -794,7 +797,7 @@ if 'df_res' in locals():
         rows=2, cols=2,
         subplot_titles=("胜率修正（贝叶斯更新）", "净值表现对比", "信号触发分析", "实时仓位变化"),
         specs=[[{"secondary_y": False}, {"secondary_y": False}],
-               [{"secondary_y": False}, {"secondary_y": True}]],
+               [{"secondary_y": True}, {"secondary_y": True}]],
         vertical_spacing=0.12,
         horizontal_spacing=0.1
     )
@@ -834,10 +837,18 @@ if 'df_res' in locals():
     # 图3: 信号触发分析
     fig.add_trace(go.Scatter(
         x=df_res.index,
-        y=df_res['超额净值'],
-        name='超额净值',
+        y=df_res['股价'],
+        name='股价',
         line=dict(color='#66BB6A', width=2.5),
-        hovertemplate='日期: %{x}<br>超额净值: %{y:.4f}<extra></extra>'
+        hovertemplate='日期: %{x}<br>股价: %{y:.2f}<extra></extra>'
+    ), 2, 1)
+    
+    fig.add_trace(go.Scatter(
+        x=df_res.index,
+        y=df_res['基准'],
+        name='基准',
+        line=dict(color='#42A5F5', width=2),
+        hovertemplate='日期: %{x}<br>基准: %{y:.2f}<extra></extra>'
     ), 2, 1)
 
     # 信号触发背景
@@ -849,7 +860,7 @@ if 'df_res' in locals():
         line=dict(width=0),
         fillcolor='rgba(255, 165, 0, 0.15)',
         hovertemplate='日期: %{x}<br>信号: %{y}<extra></extra>'
-    ), 2, 1)
+    ), 2, 1, secondary_y=True)
 
     # 空仓信号背景（如果有触发）
     if df_res['空仓信号'].sum() > 0:
@@ -861,15 +872,23 @@ if 'df_res' in locals():
             line=dict(width=0),
             fillcolor='rgba(255, 0, 0, 0.2)',
             hovertemplate='日期: %{x}<br>空仓: %{y}<extra></extra>'
-        ), 2, 1)
+        ), 2, 1, secondary_y=True)
 
     # 图4: 实时仓位变化
     fig.add_trace(go.Scatter(
         x=df_res.index,
-        y=df_res['超额净值'],
-        name='超额净值',
-        line=dict(color='#7E57C2', width=2),
-        hovertemplate='日期: %{x}<br>超额净值: %{y:.4f}<extra></extra>'
+        y=df_res['股价'],
+        name='股价',
+        line=dict(color='#66BB6A', width=2),
+        hovertemplate='日期: %{x}<br>股价: %{y:.2f}<extra></extra>'
+    ), row=2, col=2, secondary_y=False)
+    
+    fig.add_trace(go.Scatter(
+        x=df_res.index,
+        y=df_res['基准'],
+        name='基准',
+        line=dict(color='#42A5F5', width=2),
+        hovertemplate='日期: %{x}<br>基准: %{y:.2f}<extra></extra>'
     ), row=2, col=2, secondary_y=False)
 
     fig.add_trace(go.Scatter(
@@ -886,13 +905,15 @@ if 'df_res' in locals():
     # 更新Y轴标签
     fig.update_yaxes(title_text="概率", row=1, col=1)
     fig.update_yaxes(title_text="净值", row=1, col=2)
-    fig.update_yaxes(title_text="净值 / 信号", row=2, col=1)
-    fig.update_yaxes(title_text="净值", secondary_y=False, row=2, col=2)
+    fig.update_yaxes(title_text="股价/基准", secondary_y=False, row=2, col=1)
+    fig.update_yaxes(title_text="信号", range=[0, 1.1], secondary_y=True, row=2, col=1)
+    fig.update_yaxes(title_text="股价/基准", secondary_y=False, row=2, col=2)
     fig.update_yaxes(title_text="仓位", range=[0, 1.1], secondary_y=True, row=2, col=2)
 
     # 更新布局
     fig.update_layout(
-        height=750,
+        height=900,
+        width=None,
         template="plotly_white",
         showlegend=True,
         legend=dict(
@@ -902,7 +923,8 @@ if 'df_res' in locals():
             xanchor="right",
             x=1
         ),
-        hovermode='x unified'
+        hovermode='x unified',
+        margin=dict(l=50, r=50, t=100, b=50)
     )
 
     st.plotly_chart(fig, use_container_width=True)
