@@ -153,8 +153,6 @@ class FuturesStrategyBacktester:
                     np.where(df['空单开仓信号'] == 1, -1, 0))
         )
         df['仓位净值'] = (1 + (df['仓位'].shift(1) * df['收益率'].fillna(0))).cumprod()
-        print(df['仓位'])
-        print(df['仓位净值'])
         
         st.success("回测完成！")
         return df
