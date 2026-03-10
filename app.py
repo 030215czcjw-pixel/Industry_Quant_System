@@ -11,6 +11,7 @@ pages = {
         st.Page("pages/Dataset.py", title="数据管理", icon="📊"),
         st.Page("pages/Features.py", title="特征工程", icon="⚙️"),
         st.Page("pages/Backtest.py", title="策略回测", icon="📈"),
+        st.Page("pages/FuturesBacktest.py", title="策略回测(期货)", icon="📈"),
         st.Page("pages/AI_Assistant.py", title="AI 助手", icon="🤖")
     ],
     "帮助":[
