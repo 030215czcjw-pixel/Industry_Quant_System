@@ -21,6 +21,7 @@ st.set_page_config(
 col_main, col_sidebar = st.columns([3, 1])
 
 result = {}
+strategies = []
 
 with col_main:
     use_feature_pool = ('feature_pool' in st.session_state) and (not st.session_state.feature_pool.empty)
