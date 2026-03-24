@@ -96,7 +96,7 @@ with col_main:
   }}
 ]
 """
-    if st.button("生成回测逻辑"):
+    if st.button("生成回测逻辑（修改了特征列会报错，重新生成就好）"):
       client = OpenAI(
           api_key="sk-83579366c15a4f60a71c9f8d4628e8de", 
           base_url="https://api.deepseek.com"
